@@ -1,0 +1,76 @@
+@extends('layouts.hora')
+
+@section('content')
+<body style="background-image: url('http://89.117.77.220/images/back.png'); background-size: cover; background-repeat: no-repeat; background-attachment: fixed;">
+<div class="text-center">
+<h1 >Corporativo Sirus</h1>
+</div>
+<div class="text-center">
+<h3 >Fecha de Trabajo {{$fechaProgramada}}</h3>
+</div>
+
+<div class="container-fluid" >
+        <div class="row">
+            <div class="col-sm-12">
+                <div class="card text-bg-dark mb-3" >
+                <div class="table-responsive">
+                <table class="table table-dark table-striped" id="hora">
+        <thead>         
+            <tr>
+                <th>RUTA</th>
+                <th>OPERADOR</th>
+                <th>UNIDAD</th>
+                <th>CORRIDA</th>
+                <th>TURNO</th>
+            </tr>
+        </thead>
+             <tbody>
+                @foreach ($pservicios as $pservicio)
+                    <tr>									
+					 <td>{{ $pservicio->Ruta }}</td>
+                     <td>{{ $pservicio->Operador  }}</td>
+					 <td>{{ $pservicio->Unidad  }}</td>
+                     <td>{{ $pservicio->Corrida }}</td>
+                                            
+                     <td>{{ $pservicio->Turno  }}</td>
+											
+                                        
+                 </tr>
+              @endforeach
+                </tbody>
+    </table>
+    </div>
+ </div>
+</div>
+</div>
+</div>
+@endsection
+@section('footer')
+@endsection
+@section('js')
+<script>
+$('#hora').dataTable({
+    responsive: true,
+    autoWidth: false
+});
+</script>
+@endsection
+@section('css')
+<style>
+        body {
+            background-image: url('http://89.117.77.220/images/back.png');
+            background-size: cover;
+            background-repeat: no-repeat;
+            background-attachment: fixed;
+            color: white; /* Texto blanco por defecto */
+        }
+        .table-dark-custom {
+            background-color: #343a40;
+            color: white;
+        }
+        .table-dark-custom th, .table-dark-custom td {
+            border-color: #454d55;
+        }
+    </style>
+@endsection
+
