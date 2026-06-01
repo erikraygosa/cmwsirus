@@ -126,7 +126,8 @@
             <div>
                 <strong><i class="fas fa-archive mr-1"></i> Exportación masiva</strong>
                 <span class="text-muted ml-2" style="font-size:.82rem;">
-                    {{ $totalCompletos }} operador(es) con expediente completo listo(s) para exportar
+                    {{ $totalCompletos }} completo(s) &nbsp;·&nbsp;
+                    {{ $statsGlobales['marcadosParaDrive'] }} marcado(s) para Drive
                 </span>
             </div>
             <div class="d-flex flex-wrap" style="gap:.4rem;">
@@ -137,9 +138,9 @@
                     <i class="fas fa-file-archive mr-1"></i> ZIP masivo
                 </button>
                 <button type="button"
-                        class="btn btn-sm btn-success {{ $totalCompletos == 0 ? 'disabled' : '' }}"
+                        class="btn btn-sm btn-success {{ $statsGlobales['marcadosParaDrive'] == 0 ? 'disabled' : '' }}"
                         data-toggle="modal" data-target="#modalDrive"
-                        {{ $totalCompletos == 0 ? 'disabled' : '' }}>
+                        {{ $statsGlobales['marcadosParaDrive'] == 0 ? 'disabled' : '' }}>
                     <i class="fas fa-cloud-upload-alt mr-1"></i> Enviar a Drive
                 </button>
             </div>
@@ -374,10 +375,10 @@
 
                         <div class="alert alert-info py-2 mb-3" style="font-size:.82rem;">
                             <i class="fas fa-info-circle mr-1"></i>
-                            Solo se enviarán operadores con <strong>expediente completo</strong> y
-                            marcados con el ícono Drive <i class="fab fa-google-drive"></i> en la lista.
-                            Actualmente: <strong>{{ $statsGlobales['marcadosParaDrive'] }}</strong> marcado(s).
-                            Los documentos ya enviados <strong>no se sobrescriben</strong>.
+                            Se enviarán los documentos disponibles de los operadores
+                            marcados con <i class="fab fa-google-drive"></i> en la lista —
+                            <strong>{{ $statsGlobales['marcadosParaDrive'] }}</strong> marcado(s).
+                            Los documentos ya enviados anteriormente <strong>no se sobrescriben</strong>.
                             Rclone debe estar configurado con el nombre <code>gdrive_cliente</code>.
                         </div>
 

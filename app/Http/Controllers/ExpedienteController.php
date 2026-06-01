@@ -368,29 +368,25 @@ class ExpedienteController extends Controller
         $siglas          = strtoupper(trim($request->siglas));
         $tiposPermitidos = collect($request->tipos)->filter(fn($t) => isset($catalogo[$t]))->values();
 
-        $clavesObligatorias = collect($catalogo)->filter(fn($d) => $d['obligatorio'] ?? true)->keys();
-        $totalDocs          = $clavesObligatorias->count();
-
         // ── 1. Solo adjuntos activos agrupados por empleado ───────
         $todosAdjuntos = TblAdjunto::where('Tabla', $this->tabla)
             ->activo()
             ->get()
             ->groupBy('IdRegTab');
 
-        // ── 2. Solo empleados con envio=1 Y expediente completo ───
+        // ── 2. Empleados con envio=1 que tengan al menos 1 doc de los tipos seleccionados
         $empleadosConDocs = CatEmpleado::where('Estatus', 'A')
             ->where('envio', 1)
             ->get()
-            ->filter(function ($emp) use ($todosAdjuntos, $clavesObligatorias, $totalDocs) {
-                $tipos = $todosAdjuntos->get($emp->IdEmpleado, collect())
+            ->filter(function ($emp) use ($todosAdjuntos, $tiposPermitidos) {
+                $tiposSubidos = $todosAdjuntos->get($emp->IdEmpleado, collect())
                     ->map(fn($d) => $d->tipoDocumento())
-                    ->unique()->filter()
-                    ->intersect($clavesObligatorias);
-                return $tipos->count() >= $totalDocs;
+                    ->unique()->filter();
+                return $tiposSubidos->intersect($tiposPermitidos)->isNotEmpty();
             });
 
         if ($empleadosConDocs->isEmpty()) {
-            return back()->with('error', 'No hay operadores marcados para Drive con expediente completo.');
+            return back()->with('error', 'Ningún operador marcado para Drive tiene documentos de los tipos seleccionados.');
         }
 
         // ── 3. Construir carpeta temporal (solo docs no enviados aún) ──
