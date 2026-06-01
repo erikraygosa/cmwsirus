@@ -47,7 +47,7 @@
                            name="q"
                            id="inputBusqueda"
                            value="{{ $busqueda }}"
-                           placeholder="Buscar por nombre, nómina o CURP..."
+                           placeholder="Buscar por nombre o CURP..."
                            class="form-control"
                            autocomplete="off">
                     <div class="input-group-append">
@@ -156,7 +156,7 @@
                         <tr>
                             <th width="60">#</th>
                             <th>Operador</th>
-                            <th class="d-none d-lg-table-cell" width="90">Nómina</th>
+                            <th class="d-none d-lg-table-cell" width="90">Unidad</th>
                             <th class="d-none d-lg-table-cell">CURP</th>
                             <th width="200">Completitud</th>
                             <th width="80" class="text-center d-none d-md-table-cell" title="Marcado / enviado al Drive">Drive</th>
@@ -179,7 +179,7 @@
                                     <strong>{{ $emp->Nombre }}</strong>
                                 </td>
                                 <td class="align-middle d-none d-lg-table-cell text-muted" style="font-size:.82rem;">
-                                    {{ $emp->NumNomina ?? '—' }}
+                                    {{ $emp->Unidad ?? '—' }}
                                 </td>
                                 <td class="align-middle d-none d-lg-table-cell text-muted" style="font-size:.78rem;">
                                     {{ $emp->CURP ?? '—' }}

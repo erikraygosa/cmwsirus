@@ -20,16 +20,10 @@ class CatEmpleado extends Model
     }
 
     protected $fillable = [
-        'IdEmpleado', 'IdPuesto', 'CURP', 'Nombre', 'Direccion',
-        'Telefono', 'FechaNac', 'FechaIng', 'FechaVL', 'NumAfilIMSS',
-        'Licencia', 'CursoATY', 'LicVerif', 'email', 'NumNomina',
-        'Sexo', 'TipoSangre', 'NumHijos', 'Escolaridad', 'HablaMaya',
-        'EstadoCivil', 'INE', 'EmpresaAnt', 'UniMedTmpEA', 'TmpLabEA',
-        'MotivoBajaEA', 'RecibeFintoEA', 'FchRecibeFinto', 'ComoSupoVacante',
-        'INFONAVIT', 'FONACOT', 'Observ', 'YUTONG', 'ConoceRutas',
-        'Contrato', 'TjtHSBC', 'CLABE', 'Password', 'NIPCarga',
-        'NumPant', 'NumCami', 'ImpartioInducc', 'TelefonoEmer', 'IdVinden',
-        'envio',
+        'IdEmpresa', 'IdEmpleado', 'Unidad', 'IdRuta', 'IdPuesto',
+        'CURP', 'Nombre', 'Direccion', 'Telefono',
+        'FechaNac', 'FechaIng', 'NumAfilIMSS',
+        'Estatus', 'Foto', 'envio',
     ];
 
     public static function nextId(): int
