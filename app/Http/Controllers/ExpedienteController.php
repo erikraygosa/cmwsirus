@@ -359,14 +359,11 @@ class ExpedienteController extends Controller
         $request->validate([
             'carpeta_drive' => ['required', 'string', 'max:200', 'regex:/^[a-zA-Z0-9_\- ]+$/'],
             'siglas'        => ['required', 'string', 'max:10', 'regex:/^[A-Z0-9]+$/i'],
-            'tipos'         => ['required', 'array', 'min:1'],
-            'tipos.*'       => ['string'],
         ]);
 
-        $catalogo        = config('expediente_docs.documentos');
-        $carpetaDrive    = trim($request->carpeta_drive);
-        $siglas          = strtoupper(trim($request->siglas));
-        $tiposPermitidos = collect($request->tipos)->filter(fn($t) => isset($catalogo[$t]))->values();
+        $catalogo     = config('expediente_docs.documentos');
+        $carpetaDrive = trim($request->carpeta_drive);
+        $siglas       = strtoupper(trim($request->siglas));
 
         // ── 1. Solo adjuntos activos agrupados por empleado ───────
         $todosAdjuntos = TblAdjunto::where('Tabla', $this->tabla)
@@ -374,19 +371,14 @@ class ExpedienteController extends Controller
             ->get()
             ->groupBy('IdRegTab');
 
-        // ── 2. Empleados con envio=1 que tengan al menos 1 doc de los tipos seleccionados
+        // ── 2. Empleados con envio=1 que tengan al menos 1 documento almacenado
         $empleadosConDocs = CatEmpleado::where('Estatus', 'A')
             ->where('envio', 1)
             ->get()
-            ->filter(function ($emp) use ($todosAdjuntos, $tiposPermitidos) {
-                $tiposSubidos = $todosAdjuntos->get($emp->IdEmpleado, collect())
-                    ->map(fn($d) => $d->tipoDocumento())
-                    ->unique()->filter();
-                return $tiposSubidos->intersect($tiposPermitidos)->isNotEmpty();
-            });
+            ->filter(fn($emp) => $todosAdjuntos->has($emp->IdEmpleado));
 
         if ($empleadosConDocs->isEmpty()) {
-            return back()->with('error', 'Ningún operador marcado para Drive tiene documentos de los tipos seleccionados.');
+            return back()->with('error', 'Ningún operador marcado para Drive tiene documentos almacenados.');
         }
 
         // ── 3. Construir carpeta temporal (solo docs no enviados aún) ──
@@ -410,7 +402,7 @@ class ExpedienteController extends Controller
 
             foreach ($adjuntos as $adj) {
                 $tipo = $adj->tipoDocumento();
-                if (!$tiposPermitidos->contains($tipo)) continue;
+                if (!$tipo) continue;
                 if (!is_null($adj->EnvioDrive)) continue;   // ya enviado, no sobrescribir
 
                 $rutaFisica = Storage::disk($this->disco)->path($adj->FullFileName);

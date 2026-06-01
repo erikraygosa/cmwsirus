@@ -73,7 +73,7 @@
         $totalIncompletos = $statsGlobales['incompletos'];
     @endphp
     <div class="row mb-3">
-        <div class="col-6 col-md-3">
+        <div class="col-6 col-sm-4 col-md mb-2">
             <div class="info-box mb-0">
                 <span class="info-box-icon bg-success"><i class="fas fa-check"></i></span>
                 <div class="info-box-content">
@@ -82,7 +82,7 @@
                 </div>
             </div>
         </div>
-        <div class="col-6 col-md-3">
+        <div class="col-6 col-sm-4 col-md mb-2">
             <div class="info-box mb-0">
                 <span class="info-box-icon bg-warning"><i class="fas fa-exclamation-triangle"></i></span>
                 <div class="info-box-content">
@@ -91,7 +91,7 @@
                 </div>
             </div>
         </div>
-        <div class="col-6 col-md-3">
+        <div class="col-6 col-sm-4 col-md mb-2">
             <div class="info-box mb-0">
                 <span class="info-box-icon bg-primary"><i class="fas fa-file-alt"></i></span>
                 <div class="info-box-content">
@@ -100,7 +100,7 @@
                 </div>
             </div>
         </div>
-        <div class="col-6 col-md-3">
+        <div class="col-6 col-sm-4 col-md mb-2">
             <div class="info-box mb-0">
                 <span class="info-box-icon bg-info"><i class="fas fa-users"></i></span>
                 <div class="info-box-content">
@@ -109,11 +109,11 @@
                 </div>
             </div>
         </div>
-        <div class="col-6 col-md-3 mt-2 mt-md-0">
+        <div class="col-6 col-sm-4 col-md mb-2">
             <div class="info-box mb-0">
                 <span class="info-box-icon bg-teal"><i class="fab fa-google-drive"></i></span>
                 <div class="info-box-content">
-                    <span class="info-box-text">Marcados para Drive</span>
+                    <span class="info-box-text">Para Drive</span>
                     <span class="info-box-number">{{ $statsGlobales['marcadosParaDrive'] }}</span>
                 </div>
             </div>
@@ -159,7 +159,7 @@
                             <th class="d-none d-md-table-cell" width="90">Nómina</th>
                             <th class="d-none d-lg-table-cell">CURP</th>
                             <th width="200">Completitud</th>
-                            <th width="90" class="text-center" title="Enviados al Drive / obligatorios">Drive</th>
+                            <th width="80" class="text-center d-none d-md-table-cell" title="Marcado / enviado al Drive">Drive</th>
                             <th width="90" class="text-center">Acción</th>
                         </tr>
                     </thead>
@@ -197,8 +197,8 @@
                                         </small>
                                     </div>
                                 </td>
-                                <td class="align-middle text-center">
-                                    {{-- Checkbox envio a Drive --}}
+                                <td class="align-middle text-center d-none d-md-table-cell">
+                                    {{-- Toggle envio a Drive --}}
                                     <form action="{{ route('expedientes.envio.toggle', $emp->IdEmpleado) }}"
                                           method="POST" class="d-inline form-envio" data-id="{{ $emp->IdEmpleado }}">
                                         @csrf
@@ -361,12 +361,12 @@
          MODAL DRIVE
     ============================================================ --}}
     <div class="modal fade" id="modalDrive" tabindex="-1" role="dialog">
-        <div class="modal-dialog" role="document">
+        <div class="modal-dialog modal-dialog-centered" role="document">
             <div class="modal-content">
                 <form action="{{ route('expedientes.drive.sync') }}" method="POST" id="formDrive">
                     @csrf
                     <div class="modal-header">
-                        <h5 class="modal-title">
+                        <h5 class="modal-title" style="font-size:1rem;">
                             <i class="fas fa-cloud-upload-alt mr-1"></i> Enviar expedientes a Google Drive
                         </h5>
                         <button type="button" class="close" data-dismiss="modal"><span>&times;</span></button>
@@ -375,91 +375,62 @@
 
                         <div class="alert alert-info py-2 mb-3" style="font-size:.82rem;">
                             <i class="fas fa-info-circle mr-1"></i>
-                            Se enviarán los documentos disponibles de los operadores
-                            marcados con <i class="fab fa-google-drive"></i> en la lista —
-                            <strong>{{ $statsGlobales['marcadosParaDrive'] }}</strong> marcado(s).
-                            Los documentos ya enviados anteriormente <strong>no se sobrescriben</strong>.
-                            Rclone debe estar configurado con el nombre <code>gdrive_cliente</code>.
+                            Se enviarán <strong>todos los documentos almacenados</strong> de los
+                            <strong>{{ $statsGlobales['marcadosParaDrive'] }}</strong> operador(es)
+                            marcados con <i class="fab fa-google-drive"></i>.
+                            Los que ya se enviaron antes <strong>no se sobrescriben</strong>.
                         </div>
 
                         {{-- Carpeta destino --}}
-                        <div class="form-group">
-                            <label style="font-size:.85rem;font-weight:600;">
+                        <div class="form-group mb-3">
+                            <label class="font-weight-bold" style="font-size:.85rem;">
                                 Carpeta destino en Google Drive
                             </label>
                             <input type="text"
                                    name="carpeta_drive"
-                                   class="form-control form-control-sm"
+                                   class="form-control"
                                    value="Expedientes_ATY_{{ now()->year }}"
                                    required
-                                   placeholder="Ej: Expedientes_ATY_2026">
+                                   placeholder="Ej: Expedientes_ATY_2026"
+                                   autocomplete="off">
                             <small class="text-muted">
-                                Carpeta raíz que se creará (o actualizará) en el Drive.
-                                Estructura: <code>CarpetaDestino/CURP_SIGLAS/CURP_NOMBREARCHIVO.pdf</code>
+                                Estructura: <code>CarpetaDestino/CURP_SIGLAS/CURP_DOC.pdf</code>
                             </small>
                         </div>
 
                         {{-- Siglas empresa --}}
-                        <div class="form-group">
-                            <label style="font-size:.85rem;font-weight:600;">
+                        <div class="form-group mb-2">
+                            <label class="font-weight-bold" style="font-size:.85rem;">
                                 Siglas de la empresa
                             </label>
                             <input type="text"
                                    name="siglas"
-                                   class="form-control form-control-sm"
+                                   class="form-control"
                                    maxlength="10"
                                    placeholder="Ej: MO"
                                    required
-                                   style="max-width:130px;text-transform:uppercase;"
-                                   oninput="this.value=this.value.toUpperCase()">
+                                   style="max-width:160px;text-transform:uppercase;"
+                                   oninput="this.value=this.value.toUpperCase()"
+                                   autocomplete="off">
                             <small class="text-muted">
-                                Sufijo de la carpeta por operador: <code>CURP_<strong>SIGLAS</strong></code>
-                                — ej. <code>HEPY8611I3MHGRRGO4_MO</code>
+                                Sufijo por operador: <code>CURP_<strong>SIGLAS</strong></code>
                             </small>
-                        </div>
-
-                        {{-- Documentos a enviar --}}
-                        <div class="form-group mb-1">
-                            <label style="font-size:.85rem;font-weight:600;">Documentos a enviar</label>
-                            <div class="mb-1">
-                                <a href="#" class="sel-drive text-primary mr-3" style="font-size:.8rem;">Seleccionar todos</a>
-                                <a href="#" class="desel-drive text-secondary" style="font-size:.8rem;">Deseleccionar todos</a>
-                            </div>
-                            <div class="row">
-                                @foreach(config('expediente_docs.documentos') as $clave => $doc)
-                                    <div class="col-12 col-sm-6 mb-1">
-                                        <div class="custom-control custom-checkbox">
-                                            <input type="checkbox"
-                                                   class="custom-control-input chk-drive"
-                                                   name="tipos[]"
-                                                   value="{{ $clave }}"
-                                                   id="dchk_{{ $clave }}"
-                                                   {{ ($doc['drive'] ?? true) ? 'checked' : '' }}>
-                                            <label class="custom-control-label" for="dchk_{{ $clave }}"
-                                                   style="font-size:.82rem;">
-                                                <i class="{{ $doc['icono'] }} mr-1"></i> {{ $doc['nombre'] }}
-                                            </label>
-                                        </div>
-                                    </div>
-                                @endforeach
-                            </div>
                         </div>
 
                         {{-- Progreso (visible solo al enviar) --}}
                         <div id="driveProgreso" class="d-none mt-3">
-                            <div class="d-flex align-items-center">
+                            <div class="d-flex align-items-center p-2 bg-light rounded">
                                 <div class="spinner-border spinner-border-sm text-success mr-2" role="status"></div>
                                 <span style="font-size:.85rem;">
-                                    Ejecutando rclone… esto puede tardar 1–3 minutos según el volumen de archivos.
-                                    No cierres esta ventana.
+                                    Enviando… puede tardar 1–3 minutos. No cierres esta ventana.
                                 </span>
                             </div>
                         </div>
 
                     </div>
                     <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancelar</button>
-                        <button type="submit" class="btn btn-success" id="btnEnviarDrive">
+                        <button type="button" class="btn btn-secondary btn-block-xs" data-dismiss="modal">Cancelar</button>
+                        <button type="submit" class="btn btn-success btn-block-xs" id="btnEnviarDrive">
                             <i class="fas fa-cloud-upload-alt mr-1"></i> Enviar a Drive
                         </button>
                     </div>
@@ -473,10 +444,17 @@
 @section('css')
 <style>
     .info-box           { min-height: 60px; }
-    .info-box-icon      { font-size: 1.2rem; width: 50px; line-height: 50px; }
-    .info-box-content   { padding: 8px 10px; }
+    .info-box-icon      { font-size: 1.2rem; width: 50px; line-height: 50px; flex-shrink:0; }
+    .info-box-content   { padding: 8px 10px; min-width: 0; }
+    .info-box-text      { font-size: .75rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .info-box-number    { font-size: 1.3rem; }
     .page-link          { min-width: 34px; text-align: center; }
     .table td, .table th { vertical-align: middle !important; }
+    @media (max-width: 575px) {
+        .modal-footer { flex-direction: column-reverse; gap: .4rem; }
+        .modal-footer .btn { width: 100%; margin: 0 !important; }
+        .info-box-number { font-size: 1.1rem; }
+    }
 </style>
 @stop
 
@@ -492,16 +470,6 @@
     document.querySelector('.desel-masivo')?.addEventListener('click', e => {
         e.preventDefault();
         document.querySelectorAll('.chk-masivo').forEach(c => c.checked = false);
-    });
-
-    /* ── Seleccionar / deseleccionar en modal Drive ── */
-    document.querySelector('.sel-drive')?.addEventListener('click', e => {
-        e.preventDefault();
-        document.querySelectorAll('.chk-drive').forEach(c => c.checked = true);
-    });
-    document.querySelector('.desel-drive')?.addEventListener('click', e => {
-        e.preventDefault();
-        document.querySelectorAll('.chk-drive').forEach(c => c.checked = false);
     });
 
     /* ── Feedback visual al enviar ZIP masivo ── */
