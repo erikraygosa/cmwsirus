@@ -173,30 +173,68 @@
                             </div>
                         @endif
 
-                        {{-- Chip de vigencia (si el tipo tiene campo_vigencia en CatEmpleado) --}}
-                        @if($fechaVig)
-                            <div class="text-center mb-2">
-                                @if($vigEstado === 'vencida')
-                                    <span class="badge badge-danger px-2 py-1" style="font-size:.72rem;">
-                                        <i class="fas fa-times-circle mr-1"></i>
-                                        Vencida el {{ $fechaVig->format('d/m/Y') }}
-                                    </span>
-                                @elseif($vigEstado === 'critica')
-                                    <span class="badge badge-danger px-2 py-1" style="font-size:.72rem;">
-                                        <i class="fas fa-exclamation-triangle mr-1"></i>
-                                        Vence en {{ $diasParaVencer }} día(s) — {{ $fechaVig->format('d/m/Y') }}
-                                    </span>
-                                @elseif($vigEstado === 'proxima')
-                                    <span class="badge badge-warning text-dark px-2 py-1" style="font-size:.72rem;">
-                                        <i class="fas fa-clock mr-1"></i>
-                                        Vence en {{ $diasParaVencer }} días — {{ $fechaVig->format('d/m/Y') }}
-                                    </span>
+                        {{-- Vigencia + editor de fecha (si el tipo tiene campo_vigencia) --}}
+                        @if($campoVig)
+                            <div class="mb-2">
+                                {{-- Badge de estado actual --}}
+                                @if($fechaVig)
+                                    <div class="text-center mb-1">
+                                        @if($vigEstado === 'vencida')
+                                            <span class="badge badge-danger px-2 py-1" style="font-size:.72rem;">
+                                                <i class="fas fa-times-circle mr-1"></i>
+                                                Vencida el {{ $fechaVig->format('d/m/Y') }}
+                                            </span>
+                                        @elseif($vigEstado === 'critica')
+                                            <span class="badge badge-danger px-2 py-1" style="font-size:.72rem;">
+                                                <i class="fas fa-exclamation-triangle mr-1"></i>
+                                                Vence en {{ $diasParaVencer }} día(s) — {{ $fechaVig->format('d/m/Y') }}
+                                            </span>
+                                        @elseif($vigEstado === 'proxima')
+                                            <span class="badge badge-warning text-dark px-2 py-1" style="font-size:.72rem;">
+                                                <i class="fas fa-clock mr-1"></i>
+                                                Vence en {{ $diasParaVencer }} días — {{ $fechaVig->format('d/m/Y') }}
+                                            </span>
+                                        @else
+                                            <span class="badge badge-success px-2 py-1" style="font-size:.72rem;">
+                                                <i class="fas fa-calendar-check mr-1"></i>
+                                                Vigente hasta {{ $fechaVig->format('d/m/Y') }}
+                                            </span>
+                                        @endif
+                                    </div>
                                 @else
-                                    <span class="badge badge-success px-2 py-1" style="font-size:.72rem;">
-                                        <i class="fas fa-calendar-check mr-1"></i>
-                                        Vigente hasta {{ $fechaVig->format('d/m/Y') }}
-                                    </span>
+                                    <div class="text-center mb-1">
+                                        <span class="badge badge-secondary px-2 py-1" style="font-size:.72rem;">
+                                            <i class="fas fa-calendar-times mr-1"></i> Sin fecha de vencimiento
+                                        </span>
+                                    </div>
                                 @endif
+
+                                {{-- Mini-form para editar fecha --}}
+                                <form action="{{ route('expedientes.vigencia.update', $empleado->IdEmpleado) }}"
+                                      method="POST" class="d-flex align-items-center mt-1" style="gap:.3rem;">
+                                    @csrf
+                                    <input type="hidden" name="campo" value="{{ $campoVig }}">
+                                    <input type="date"
+                                           name="fecha"
+                                           class="form-control form-control-sm flex-grow-1"
+                                           value="{{ $fechaVig ? $fechaVig->format('Y-m-d') : '' }}"
+                                           style="font-size:.75rem;">
+                                    <button type="submit"
+                                            class="btn btn-sm btn-outline-primary"
+                                            title="Guardar fecha de vencimiento">
+                                        <i class="fas fa-save"></i>
+                                    </button>
+                                    @if($fechaVig)
+                                        <button type="submit"
+                                                name="fecha"
+                                                value=""
+                                                class="btn btn-sm btn-outline-danger"
+                                                title="Quitar fecha"
+                                                onclick="return confirm('¿Quitar la fecha de vencimiento?')">
+                                            <i class="fas fa-times"></i>
+                                        </button>
+                                    @endif
+                                </form>
                             </div>
                         @endif
 

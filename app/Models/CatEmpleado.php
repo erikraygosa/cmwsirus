@@ -23,7 +23,7 @@ class CatEmpleado extends Model
         'IdEmpresa', 'IdEmpleado', 'Unidad', 'IdRuta', 'IdPuesto',
         'CURP', 'Nombre', 'Direccion', 'Telefono',
         'FechaNac', 'FechaIng', 'NumAfilIMSS',
-        'Estatus', 'Foto', 'envio',
+        'Estatus', 'Foto', 'FechaVL', 'envio',
     ];
 
     public static function nextId(): int

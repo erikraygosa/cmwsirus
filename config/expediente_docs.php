@@ -37,7 +37,7 @@ return [
             'zip'           => true,
             'drive'         => true,
             'nomenclatura'  => 'LICENCIA',
-            // campo_vigencia eliminado — columna FechaVL no existe en catempleados
+            'campo_vigencia'=> 'FechaVL',
         ],
 
         'COMP_DOM' => [

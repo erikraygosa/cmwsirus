@@ -465,6 +465,24 @@ class ExpedienteController extends Controller
 
     /*
     |--------------------------------------------------------------------------
+    | UPDATE VIGENCIA — Guarda fecha de vencimiento de licencia (FechaVL)
+    |--------------------------------------------------------------------------
+    */
+    public function updateVigencia(Request $request, int $id)
+    {
+        $request->validate([
+            'campo'  => ['required', 'string', 'in:FechaVL'],
+            'fecha'  => ['nullable', 'date'],
+        ]);
+
+        $empleado = CatEmpleado::findOrFail($id);
+        $empleado->update([$request->campo => $request->fecha ?: null]);
+
+        return back()->with('success', 'Fecha de vencimiento actualizada.');
+    }
+
+    /*
+    |--------------------------------------------------------------------------
     | TOGGLE ENVIO — Marca / desmarca empleado para envío a Drive
     |--------------------------------------------------------------------------
     */
