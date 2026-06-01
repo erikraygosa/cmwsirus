@@ -19,6 +19,11 @@
                 <span class="badge badge-warning ml-1">{{ $subidos }}/{{ $totalDocs }} obligatorios</span>
             @endif
             <span class="badge badge-secondary ml-1">{{ $subidosTotal }}/{{ count($catalogo) }} subidos</span>
+            @if($empleado->envio)
+                <span class="badge badge-teal ml-1">
+                    <i class="fab fa-google-drive mr-1"></i>Marcado para Drive
+                </span>
+            @endif
         </div>
         <button type="button" class="btn btn-sm btn-outline-dark" data-toggle="modal" data-target="#modalZip">
             <i class="fas fa-file-archive mr-1"></i> Descargar ZIP
@@ -141,10 +146,25 @@
                                     </a>
                                 @endif
                             </div>
-                            <div class="text-muted text-center mb-2" style="font-size:.72rem;">
+                            <div class="text-muted text-center mb-1" style="font-size:.72rem;">
                                 {{ number_format($adjunto->Peso / 1024, 0) }} KB
                                 &bull; {{ \Carbon\Carbon::parse($adjunto->Creado)->format('d/m/Y') }}
                             </div>
+                            @if($adjunto->fueEnviado())
+                                <div class="text-center mb-2">
+                                    <span class="badge badge-success px-2 py-1" style="font-size:.68rem;"
+                                          title="Enviado el {{ \Carbon\Carbon::parse($adjunto->EnvioDrive)->format('d/m/Y H:i') }}">
+                                        <i class="fab fa-google-drive mr-1"></i>
+                                        Drive {{ \Carbon\Carbon::parse($adjunto->EnvioDrive)->format('d/m/Y') }}
+                                    </span>
+                                </div>
+                            @else
+                                <div class="text-center mb-2">
+                                    <span class="badge badge-light text-muted px-2 py-1" style="font-size:.68rem;">
+                                        <i class="fab fa-google-drive mr-1"></i> Pendiente Drive
+                                    </span>
+                                </div>
+                            @endif
                         @else
                             <div class="text-center text-muted py-3"
                                  style="min-height:90px;display:flex;flex-direction:column;align-items:center;justify-content:center;">

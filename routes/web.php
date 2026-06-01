@@ -100,6 +100,7 @@ Route::middleware([
         Route::post('/{id}/documentos',      [ExpedienteController::class, 'store'])        ->name('store');
         Route::delete('/documentos/{idAdj}', [ExpedienteController::class, 'destroy'])      ->name('destroy');
         Route::get('/{id}/zip',              [ExpedienteController::class, 'downloadZip'])  ->name('zip');
+        Route::post('/{id}/envio',           [ExpedienteController::class, 'toggleEnvio'])  ->name('envio.toggle');
     });
 
 });

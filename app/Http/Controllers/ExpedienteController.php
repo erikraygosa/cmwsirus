@@ -65,11 +65,16 @@ class ExpedienteController extends Controller
             $pct       = $totalDocs > 0 ? (int) round($count / $totalDocs * 100) : 0;
             $completo  = $count >= $totalDocs;
 
+            // Cuántos docs obligatorios ya fueron enviados al Drive
+            $enviados = $docs->filter(fn($d) => !is_null($d->EnvioDrive)
+                && $clavesObligatorias->contains($d->tipoDocumento()))->count();
+
             $completitud[$emp->IdEmpleado] = [
                 'count'    => $count,
                 'total'    => $totalDocs,
                 'pct'      => $pct,
                 'completo' => $completo,
+                'enviados' => $enviados,
             ];
         }
 
@@ -79,7 +84,7 @@ class ExpedienteController extends Controller
         $todosAdjGlobal = TblAdjunto::where('Tabla', $this->tabla)
             ->whereIn('IdRegTab', $todosIds)
             ->where('Estatus', '!=', 'ELIMINADO')
-            ->get(['IdRegTab', 'Comentarios'])
+            ->get(['IdRegTab', 'Comentarios', 'EnvioDrive'])
             ->groupBy('IdRegTab');
 
         $completosGlobal = 0;
@@ -93,10 +98,14 @@ class ExpedienteController extends Controller
             }
         }
 
+        // Cuántos empleados completos tienen el flag envio=1
+        $marcadosParaDrive = CatEmpleado::where('Estatus', 'A')->where('envio', 1)->count();
+
         $statsGlobales = [
-            'completos'   => $completosGlobal,
-            'incompletos' => $todosIds->count() - $completosGlobal,
-            'total'       => $todosIds->count(),
+            'completos'        => $completosGlobal,
+            'incompletos'      => $todosIds->count() - $completosGlobal,
+            'total'            => $todosIds->count(),
+            'marcadosParaDrive'=> $marcadosParaDrive,
         ];
 
         return view('expedientes.index', compact('empleados', 'completitud', 'busqueda', 'totalDocs', 'statsGlobales'));
@@ -359,33 +368,39 @@ class ExpedienteController extends Controller
         $siglas          = strtoupper(trim($request->siglas));
         $tiposPermitidos = collect($request->tipos)->filter(fn($t) => isset($catalogo[$t]))->values();
 
-        // ── 1. Traer adjuntos agrupados por empleado ──────────────
+        $clavesObligatorias = collect($catalogo)->filter(fn($d) => $d['obligatorio'] ?? true)->keys();
+        $totalDocs          = $clavesObligatorias->count();
+
+        // ── 1. Solo adjuntos activos agrupados por empleado ───────
         $todosAdjuntos = TblAdjunto::where('Tabla', $this->tabla)
             ->activo()
             ->get()
             ->groupBy('IdRegTab');
 
-        // ── 2. Incluir cualquier operador activo que tenga al menos 1 doc seleccionado
+        // ── 2. Solo empleados con envio=1 Y expediente completo ───
         $empleadosConDocs = CatEmpleado::where('Estatus', 'A')
+            ->where('envio', 1)
             ->get()
-            ->filter(function ($emp) use ($todosAdjuntos, $tiposPermitidos) {
-                $tiposSubidos = $todosAdjuntos->get($emp->IdEmpleado, collect())
+            ->filter(function ($emp) use ($todosAdjuntos, $clavesObligatorias, $totalDocs) {
+                $tipos = $todosAdjuntos->get($emp->IdEmpleado, collect())
                     ->map(fn($d) => $d->tipoDocumento())
-                    ->unique()->filter();
-                return $tiposSubidos->intersect($tiposPermitidos)->isNotEmpty();
+                    ->unique()->filter()
+                    ->intersect($clavesObligatorias);
+                return $tipos->count() >= $totalDocs;
             });
 
         if ($empleadosConDocs->isEmpty()) {
-            return back()->with('error', 'Ningún operador tiene documentos de los tipos seleccionados.');
+            return back()->with('error', 'No hay operadores marcados para Drive con expediente completo.');
         }
 
-        // ── 3. Construir carpeta temporal organizada ───────────────
+        // ── 3. Construir carpeta temporal (solo docs no enviados aún) ──
         $tmpBase = storage_path('app/temp/drive_sync_' . time());
         if (!is_dir($tmpBase)) {
             mkdir($tmpBase, 0755, true);
         }
 
         $totalArchivos = 0;
+        $idsEnviados   = [];   // [ adjunto_id, ... ]
 
         foreach ($empleadosConDocs as $emp) {
             $curp      = $emp->CURP ?? $emp->IdEmpleado;
@@ -400,6 +415,7 @@ class ExpedienteController extends Controller
             foreach ($adjuntos as $adj) {
                 $tipo = $adj->tipoDocumento();
                 if (!$tiposPermitidos->contains($tipo)) continue;
+                if (!is_null($adj->EnvioDrive)) continue;   // ya enviado, no sobrescribir
 
                 $rutaFisica = Storage::disk($this->disco)->path($adj->FullFileName);
                 if (!file_exists($rutaFisica)) continue;
@@ -409,8 +425,14 @@ class ExpedienteController extends Controller
                 $destino      = $carpetaOp . DIRECTORY_SEPARATOR . "{$curp}_{$nomenclatura}.{$ext}";
 
                 copy($rutaFisica, $destino);
+                $idsEnviados[] = $adj->Id;
                 $totalArchivos++;
             }
+        }
+
+        if ($totalArchivos === 0) {
+            $this->limpiarDirectorio($tmpBase);
+            return back()->with('error', 'Todos los documentos seleccionados ya fueron enviados al Drive anteriormente.');
         }
 
         // ── 4. Ejecutar rclone ────────────────────────────────────
@@ -438,8 +460,13 @@ class ExpedienteController extends Controller
         // ── 5. Limpiar carpeta temporal ───────────────────────────
         $this->limpiarDirectorio($tmpBase);
 
-        // ── 6. Respuesta ──────────────────────────────────────────
+        // ── 6. Marcar docs como enviados y responder ──────────────
         if ($exitCode === 0) {
+            if (!empty($idsEnviados)) {
+                TblAdjunto::whereIn('Id', $idsEnviados)
+                    ->update(['EnvioDrive' => now(), 'updated_at' => now()]);
+            }
+
             $msg = "✅ Enviados {$totalArchivos} archivos de {$empleadosConDocs->count()} operadores "
                  . "a Drive/{$carpetaDrive} (carpetas: CURP_{$siglas}/)\n\n{$outputStr}";
             return back()->with('drive_resultado', $msg);
@@ -447,6 +474,23 @@ class ExpedienteController extends Controller
 
         return back()->with('error',
             "rclone terminó con código {$exitCode}.\n\nOutput:\n{$outputStr}"
+        );
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | TOGGLE ENVIO — Marca / desmarca empleado para envío a Drive
+    |--------------------------------------------------------------------------
+    */
+    public function toggleEnvio(Request $request, int $id)
+    {
+        $empleado = CatEmpleado::findOrFail($id);
+        $empleado->update(['envio' => $request->boolean('envio') ? 1 : 0]);
+
+        return back()->with('success',
+            $empleado->envio
+                ? 'Operador marcado para envío a Drive.'
+                : 'Operador desmarcado del envío a Drive.'
         );
     }
 

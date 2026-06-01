@@ -29,6 +29,7 @@ class CatEmpleado extends Model
         'INFONAVIT', 'FONACOT', 'Observ', 'YUTONG', 'ConoceRutas',
         'Contrato', 'TjtHSBC', 'CLABE', 'Password', 'NIPCarga',
         'NumPant', 'NumCami', 'ImpartioInducc', 'TelefonoEmer', 'IdVinden',
+        'envio',
     ];
 
     public static function nextId(): int

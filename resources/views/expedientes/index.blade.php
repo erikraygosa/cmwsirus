@@ -109,6 +109,15 @@
                 </div>
             </div>
         </div>
+        <div class="col-6 col-md-3 mt-2 mt-md-0">
+            <div class="info-box mb-0">
+                <span class="info-box-icon bg-teal"><i class="fab fa-google-drive"></i></span>
+                <div class="info-box-content">
+                    <span class="info-box-text">Marcados para Drive</span>
+                    <span class="info-box-number">{{ $statsGlobales['marcadosParaDrive'] }}</span>
+                </div>
+            </div>
+        </div>
     </div>
 
     {{-- Barra exportación masiva --}}
@@ -149,6 +158,7 @@
                             <th class="d-none d-md-table-cell" width="90">Nómina</th>
                             <th class="d-none d-lg-table-cell">CURP</th>
                             <th width="200">Completitud</th>
+                            <th width="90" class="text-center" title="Enviados al Drive / obligatorios">Drive</th>
                             <th width="90" class="text-center">Acción</th>
                         </tr>
                     </thead>
@@ -185,6 +195,25 @@
                                             {{ $info['count'] }}/{{ $info['total'] }}
                                         </small>
                                     </div>
+                                </td>
+                                <td class="align-middle text-center">
+                                    {{-- Checkbox envio a Drive --}}
+                                    <form action="{{ route('expedientes.envio.toggle', $emp->IdEmpleado) }}"
+                                          method="POST" class="d-inline form-envio" data-id="{{ $emp->IdEmpleado }}">
+                                        @csrf
+                                        <input type="hidden" name="envio" value="{{ $emp->envio ? 0 : 1 }}">
+                                        <button type="submit"
+                                                class="btn btn-sm {{ $emp->envio ? 'btn-teal' : 'btn-outline-secondary' }}"
+                                                title="{{ $emp->envio ? 'Marcado para Drive — click para desmarcar' : 'Click para marcar para Drive' }}">
+                                            <i class="fab fa-google-drive"></i>
+                                            @if($info['enviados'] > 0)
+                                                <span class="badge badge-light ml-1"
+                                                      style="font-size:.65rem;">
+                                                    {{ $info['enviados'] }}/{{ $info['total'] }}
+                                                </span>
+                                            @endif
+                                        </button>
+                                    </form>
                                 </td>
                                 <td class="align-middle text-center">
                                     <a href="{{ route('expedientes.show', $emp->IdEmpleado) }}"
@@ -345,8 +374,10 @@
 
                         <div class="alert alert-info py-2 mb-3" style="font-size:.82rem;">
                             <i class="fas fa-info-circle mr-1"></i>
-                            Se enviarán los documentos <strong>seleccionados</strong> de todos los operadores
-                            activos que los tengan cargados — sin importar si el expediente está completo.
+                            Solo se enviarán operadores con <strong>expediente completo</strong> y
+                            marcados con el ícono Drive <i class="fab fa-google-drive"></i> en la lista.
+                            Actualmente: <strong>{{ $statsGlobales['marcadosParaDrive'] }}</strong> marcado(s).
+                            Los documentos ya enviados <strong>no se sobrescriben</strong>.
                             Rclone debe estar configurado con el nombre <code>gdrive_cliente</code>.
                         </div>
 

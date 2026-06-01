@@ -25,6 +25,7 @@ class TblAdjunto extends Model
         'Creado',
         'created_at',
         'updated_at',
+        'EnvioDrive',
     ];
 
     /*
@@ -75,6 +76,12 @@ class TblAdjunto extends Model
             return $m[1];
         }
         return '';
+    }
+
+    /** ¿Ya fue enviado al Drive? */
+    public function fueEnviado(): bool
+    {
+        return !is_null($this->EnvioDrive);
     }
 
     /** ¿Es una imagen? */
