@@ -36,11 +36,9 @@ class ExpedienteController extends Controller
         $empleados = CatEmpleado::when($busqueda, function ($q) use ($busqueda) {
                 $q->where(function ($sub) use ($busqueda) {
                     $sub->where('Nombre', 'like', "%{$busqueda}%")
-                        ->orWhere('NumNomina', 'like', "%{$busqueda}%")
                         ->orWhere('CURP', 'like', "%{$busqueda}%");
                 });
             })
-            ->where('Estatus', 'A')           // solo activos
             ->orderBy('Nombre')
             ->paginate(25)
             ->withQueryString();

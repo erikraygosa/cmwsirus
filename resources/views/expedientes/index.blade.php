@@ -156,7 +156,7 @@
                         <tr>
                             <th width="60">#</th>
                             <th>Operador</th>
-                            <th class="d-none d-md-table-cell" width="90">Nómina</th>
+                            <th class="d-none d-lg-table-cell" width="90">Nómina</th>
                             <th class="d-none d-lg-table-cell">CURP</th>
                             <th width="200">Completitud</th>
                             <th width="80" class="text-center d-none d-md-table-cell" title="Marcado / enviado al Drive">Drive</th>
@@ -178,7 +178,7 @@
                                     <i class="fas {{ $icono }} mr-1"></i>
                                     <strong>{{ $emp->Nombre }}</strong>
                                 </td>
-                                <td class="align-middle d-none d-md-table-cell text-muted" style="font-size:.82rem;">
+                                <td class="align-middle d-none d-lg-table-cell text-muted" style="font-size:.82rem;">
                                     {{ $emp->NumNomina ?? '—' }}
                                 </td>
                                 <td class="align-middle d-none d-lg-table-cell text-muted" style="font-size:.78rem;">
