@@ -325,10 +325,26 @@ return [
         // ],
         ['header' => 'Configuracion'],
         [
-            'text' => 'Usuarios',
-            'url' => 'users',
-            'icon' => 'fas fa-fw fa-user',
-            'can' => 'adminusers',
+            'text' => 'Administración',
+            'icon' => 'fas fa-fw fa-cogs',
+            'can'  => 'adminusers',
+            'submenu' => [
+                [
+                    'text' => 'Usuarios',
+                    'url'  => 'users',
+                    'icon' => 'fas fa-fw fa-users',
+                ],
+                [
+                    'text' => 'Roles',
+                    'url'  => 'roles',
+                    'icon' => 'fas fa-fw fa-shield-alt',
+                ],
+                [
+                    'text' => 'Permisos',
+                    'url'  => 'permisos',
+                    'icon' => 'fas fa-fw fa-key',
+                ],
+            ],
         ],
         [
             'text' => 'Cambiar contraseña',

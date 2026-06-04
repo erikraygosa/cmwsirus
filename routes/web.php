@@ -6,6 +6,8 @@ use App\Http\Controllers\HorarioOperadorController;
 use App\Http\Controllers\TblaccidenteController;
 use App\Http\Controllers\accidenteImagenController;
 use App\Http\Controllers\UserController;
+use App\Http\Controllers\RoleController;
+use App\Http\Controllers\PermissionController;
 use App\Http\Controllers\HorariodiaController;
 use App\Http\Controllers\HorariodiasigController;
 use App\Http\Controllers\DashboardController;
@@ -38,7 +40,9 @@ Route::middleware([
     Route::match(['get', 'post'], '/accidentes/generarpdf', [App\Http\Controllers\TblaccidenteController::class, 'generarpdf'])
         ->name('accidentes.generarpdf');
 
-    Route::resource('users', Usercontroller::class)->middleware('can:adminusers')->names('users');
+    Route::resource('users',    UserController::class)      ->middleware('can:adminusers')->names('users');
+    Route::resource('roles',    RoleController::class)      ->middleware('can:adminusers')->names('roles');
+    Route::resource('permisos', PermissionController::class)->middleware('can:adminusers')->names('permisos')->only(['index','create','store','destroy']);
     Route::resource('accidentes', TblaccidenteController::class)->middleware('can:accidentes')->names('accidentes');
 
     Route::match(['get', 'post'], '/accidentes/actualizarestado', [App\Http\Controllers\TblaccidenteController::class, 'cambiarEstado'])
