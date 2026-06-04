@@ -384,17 +384,18 @@
                         {{-- Carpeta destino --}}
                         <div class="form-group mb-3">
                             <label class="font-weight-bold" style="font-size:.85rem;">
-                                Carpeta destino en Google Drive
+                                Subcarpeta en Google Drive
                             </label>
                             <input type="text"
                                    name="carpeta_drive"
                                    class="form-control"
-                                   value="Expedientes_ATY_{{ now()->year }}"
+                                   value="Expedientes_{{ now()->year }}"
                                    required
-                                   placeholder="Ej: Expedientes_ATY_2026"
+                                   placeholder="Ej: Expedientes_2026"
                                    autocomplete="off">
                             <small class="text-muted">
-                                Estructura: <code>CarpetaDestino/CURP_SIGLAS/CURP_DOC.pdf</code>
+                                Se creará dentro de la carpeta Drive configurada.
+                                Estructura: <code>Subcarpeta/CURP_SIGLAS/CURP_DOC.pdf</code>
                             </small>
                         </div>
 

@@ -422,19 +422,30 @@ class ExpedienteController extends Controller
         }
 
         // ── 4. Ejecutar rclone ────────────────────────────────────
-        $remoteNombre = config('expediente_docs.rclone_remote', 'gdrive_cliente');
-        $destDrive    = "{$remoteNombre}:{$carpetaDrive}";
+        $remoteNombre  = env('RCLONE_REMOTE', config('expediente_docs.rclone_remote', 'gdrive_cliente'));
+        $rcloneBin     = env('RCLONE_BIN', 'rclone');
+        $rcloneConf    = env('RCLONE_CONF');
+        $driveFolderId = env('DRIVE_FOLDER_ID');   // ID de la carpeta raíz en Drive
 
-        $rcloneBin  = env('RCLONE_BIN', 'rclone');
-        $rcloneConf = env('RCLONE_CONF');
-        $confFlag   = $rcloneConf ? '--config ' . escapeshellarg($rcloneConf) : '';
+        // Si hay folder ID: apunta a la raíz del ID y usa carpeta_drive como subcarpeta
+        // Si no: usa el nombre como ruta normal en el Drive
+        if ($driveFolderId) {
+            $destDrive  = "{$remoteNombre}:{$carpetaDrive}";
+            $folderFlag = '--drive-root-folder-id=' . escapeshellarg($driveFolderId);
+        } else {
+            $destDrive  = "{$remoteNombre}:{$carpetaDrive}";
+            $folderFlag = '';
+        }
+
+        $confFlag = $rcloneConf ? '--config ' . escapeshellarg($rcloneConf) : '';
 
         $cmd = sprintf(
-            '%s copy %s %s %s --progress --transfers=4 --stats-one-line 2>&1',
+            '%s copy %s %s %s %s --progress --transfers=4 --stats-one-line 2>&1',
             escapeshellarg($rcloneBin),
             escapeshellarg($tmpBase),
             escapeshellarg($destDrive),
-            $confFlag
+            $confFlag,
+            $folderFlag
         );
 
         $output    = [];
