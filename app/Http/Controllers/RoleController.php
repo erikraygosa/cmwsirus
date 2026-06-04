@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\User;
 use Illuminate\Http\Request;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
@@ -10,10 +11,11 @@ class RoleController extends Controller
 {
     public function index()
     {
-        $roles = Role::with('permissions')
-            ->withCount('users')
-            ->orderBy('name')
-            ->get();
+        $roles = Role::with('permissions')->orderBy('name')->get();
+
+        // withCount('users') falla en Spatie v6 cuando guard_name no está en atributos.
+        // Usamos User::role() que es el scope oficial de Spatie.
+        $roles->each(fn($role) => $role->users_count = User::role($role->name)->count());
 
         return view('roles.index', compact('roles'));
     }
@@ -63,11 +65,12 @@ class RoleController extends Controller
 
     public function destroy($id)
     {
-        $role = Role::withCount('users')->findOrFail($id);
+        $role = Role::findOrFail($id);
 
-        if ($role->users_count > 0) {
+        $usersCount = User::role($role->name)->count();
+        if ($usersCount > 0) {
             return back()->with('error',
-                "No se puede eliminar: el rol tiene {$role->users_count} usuario(s) asignado(s).");
+                "No se puede eliminar: el rol tiene {$usersCount} usuario(s) asignado(s).");
         }
 
         $role->delete();
