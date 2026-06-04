@@ -93,7 +93,7 @@ Route::middleware([
     });
 
     /* ---- MÓDULO EXPEDIENTES ---- */
-    Route::prefix('expedientes')->name('expedientes.')->group(function () {
+    Route::prefix('expedientes')->name('expedientes.')->middleware('can:expedientes')->group(function () {
 
         // ⚠️ Rutas estáticas SIEMPRE antes de /{id}
         Route::get('/masivo/zip',            [ExpedienteController::class, 'exportMasivo'])     ->name('masivo.zip');
