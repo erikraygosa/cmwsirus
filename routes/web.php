@@ -92,8 +92,9 @@ Route::middleware([
     Route::prefix('expedientes')->name('expedientes.')->group(function () {
 
         // ⚠️ Rutas estáticas SIEMPRE antes de /{id}
-        Route::get('/masivo/zip',            [ExpedienteController::class, 'exportMasivo']) ->name('masivo.zip');
-        Route::post('/masivo/drive',         [ExpedienteController::class, 'syncDrive'])    ->name('drive.sync');
+        Route::get('/masivo/zip',            [ExpedienteController::class, 'exportMasivo'])     ->name('masivo.zip');
+        Route::post('/masivo/drive',         [ExpedienteController::class, 'syncDrive'])       ->name('drive.sync');
+        Route::get('/masivo/drive/{syncId}', [ExpedienteController::class, 'syncDriveStatus']) ->name('drive.status');
 
         Route::get('/',                      [ExpedienteController::class, 'index'])        ->name('index');
         Route::get('/{id}',                  [ExpedienteController::class, 'show'])         ->name('show');

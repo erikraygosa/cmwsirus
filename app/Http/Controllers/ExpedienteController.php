@@ -340,17 +340,14 @@ class ExpedienteController extends Controller
 
     /*
     |--------------------------------------------------------------------------
-    | SYNC DRIVE — Sube expedientes completos a Google Drive via rclone
+    | SYNC DRIVE — Lanza rclone en background y retorna sync_id para polling
     |--------------------------------------------------------------------------
-    | Requiere rclone configurado en el servidor con el remote: gdrive_cliente
-    | Configurar una vez con: rclone config
-    | Documentación: https://rclone.org/drive/
-    |
-    | Flujo:
-    |   1. Copia archivos seleccionados a carpeta temporal organizada por operador
-    |   2. Ejecuta rclone copy apuntando al Drive del cliente
-    |   3. Limpia la carpeta temporal
-    |   4. Devuelve el output de rclone como resultado
+    | Flujo asíncrono (soporta 70+ operadores sin timeout):
+    |   1. Copia archivos a carpeta temporal (PHP, rápido)
+    |   2. Escribe script .bat/.sh con el comando rclone
+    |   3. Lanza el script en background (no bloquea el request)
+    |   4. Retorna JSON con sync_id
+    |   5. El frontend hace polling a syncDriveStatus() cada 3 s
     */
     public function syncDrive(Request $request)
     {
@@ -363,115 +360,167 @@ class ExpedienteController extends Controller
         $carpetaDrive = trim($request->carpeta_drive);
         $siglas       = strtoupper(trim($request->siglas));
 
-        // ── 1. Solo adjuntos activos agrupados por empleado ───────
+        // ── 1. Adjuntos y empleados ───────────────────────────────
         $todosAdjuntos = TblAdjunto::where('Tabla', $this->tabla)
-            ->activo()
-            ->get()
-            ->groupBy('IdRegTab');
+            ->activo()->get()->groupBy('IdRegTab');
 
-        // ── 2. Empleados con envio=1 que tengan al menos 1 documento almacenado
         $empleadosConDocs = CatEmpleado::where('Estatus', 'A')
-            ->where('envio', 1)
-            ->get()
+            ->where('envio', 1)->get()
             ->filter(fn($emp) => $todosAdjuntos->has($emp->IdEmpleado));
 
         if ($empleadosConDocs->isEmpty()) {
-            return back()->with('error', 'Ningún operador marcado para Drive tiene documentos almacenados.');
+            return response()->json(
+                ['error' => 'Ningún operador marcado para Drive tiene documentos almacenados.'], 422
+            );
         }
 
-        // ── 3. Construir carpeta temporal (solo docs no enviados aún) ──
-        $tmpBase = storage_path('app/temp/drive_sync_' . time());
-        if (!is_dir($tmpBase)) {
-            mkdir($tmpBase, 0755, true);
-        }
+        // ── 2. Directorio de trabajo para este job ────────────────
+        $syncId  = 'drive_' . uniqid('', true);
+        $syncDir = storage_path('app/temp/' . $syncId);
+        $tmpBase = $syncDir . DIRECTORY_SEPARATOR . 'files';
+        mkdir($tmpBase, 0755, true);
 
+        // ── 3. Copiar archivos pendientes a temp ──────────────────
         $totalArchivos = 0;
-        $idsEnviados   = [];   // [ adjunto_id, ... ]
+        $idsEnviados   = [];
 
         foreach ($empleadosConDocs as $emp) {
             $curp      = $emp->CURP ?? $emp->IdEmpleado;
             $carpetaOp = $tmpBase . DIRECTORY_SEPARATOR . "{$curp}_{$siglas}";
+            if (!is_dir($carpetaOp)) mkdir($carpetaOp, 0755, true);
 
-            if (!is_dir($carpetaOp)) {
-                mkdir($carpetaOp, 0755, true);
-            }
-
-            $adjuntos = $todosAdjuntos->get($emp->IdEmpleado, collect());
-
-            foreach ($adjuntos as $adj) {
+            foreach ($todosAdjuntos->get($emp->IdEmpleado, collect()) as $adj) {
                 $tipo = $adj->tipoDocumento();
-                if (!$tipo) continue;
-                if (!is_null($adj->EnvioDrive)) continue;   // ya enviado, no sobrescribir
+                if (!$tipo || !is_null($adj->EnvioDrive)) continue;
 
                 $rutaFisica = Storage::disk($this->disco)->path($adj->FullFileName);
                 if (!file_exists($rutaFisica)) continue;
 
                 $nomenclatura = $catalogo[$tipo]['nomenclatura'] ?? $tipo;
                 $ext          = pathinfo($adj->OriginalFileName, PATHINFO_EXTENSION);
-                $destino      = $carpetaOp . DIRECTORY_SEPARATOR . "{$curp}_{$nomenclatura}.{$ext}";
-
-                copy($rutaFisica, $destino);
+                copy($rutaFisica, $carpetaOp . DIRECTORY_SEPARATOR . "{$curp}_{$nomenclatura}.{$ext}");
                 $idsEnviados[] = $adj->Id;
                 $totalArchivos++;
             }
         }
 
         if ($totalArchivos === 0) {
-            $this->limpiarDirectorio($tmpBase);
-            return back()->with('error', 'Todos los documentos seleccionados ya fueron enviados al Drive anteriormente.');
+            $this->limpiarDirectorio($syncDir);
+            return response()->json(
+                ['error' => 'Todos los documentos ya fueron enviados al Drive anteriormente.'], 422
+            );
         }
 
-        // ── 4. Ejecutar rclone ────────────────────────────────────
-        $remoteNombre  = env('RCLONE_REMOTE', config('expediente_docs.rclone_remote', 'gdrive_cliente'));
+        // ── 4. Guardar estado del job ─────────────────────────────
+        $logFile      = $syncDir . DIRECTORY_SEPARATOR . 'rclone.log';
+        $exitCodeFile = $syncDir . DIRECTORY_SEPARATOR . 'exitcode.txt';
+
+        file_put_contents($syncDir . DIRECTORY_SEPARATOR . 'state.json', json_encode([
+            'ids_enviados'     => $idsEnviados,
+            'total_archivos'   => $totalArchivos,
+            'operadores_count' => $empleadosConDocs->count(),
+            'carpeta_drive'    => $carpetaDrive,
+            'sync_dir'         => $syncDir,
+        ]));
+
+        // ── 5. Construir comando rclone ───────────────────────────
         $rcloneBin     = env('RCLONE_BIN', 'rclone');
         $rcloneConf    = env('RCLONE_CONF');
-        $driveFolderId = env('DRIVE_FOLDER_ID');   // ID de la carpeta raíz en Drive
+        $remoteNombre  = env('RCLONE_REMOTE', 'gdrive_cliente');
+        $driveFolderId = env('DRIVE_FOLDER_ID');
 
-        // Si hay folder ID: apunta a la raíz del ID y usa carpeta_drive como subcarpeta
-        // Si no: usa el nombre como ruta normal en el Drive
-        if ($driveFolderId) {
-            $destDrive  = "{$remoteNombre}:{$carpetaDrive}";
-            $folderFlag = '--drive-root-folder-id=' . escapeshellarg($driveFolderId);
+        $destDrive  = "{$remoteNombre}:{$carpetaDrive}";
+        $confFlag   = $rcloneConf    ? '--config '              . escapeshellarg($rcloneConf)    : '';
+        $folderFlag = $driveFolderId ? '--drive-root-folder-id ' . escapeshellarg($driveFolderId) : '';
+
+        // ── 6. Lanzar en background según SO ─────────────────────
+        $isWindows = strtoupper(substr(PHP_OS, 0, 3)) === 'WIN';
+
+        if ($isWindows) {
+            $bat  = "@echo off\r\n";
+            $bat .= sprintf(
+                '%s copy %s %s %s %s --transfers=4 > %s 2>&1' . "\r\n",
+                escapeshellarg($rcloneBin),
+                escapeshellarg($tmpBase),
+                escapeshellarg($destDrive),
+                $confFlag, $folderFlag,
+                escapeshellarg($logFile)
+            );
+            $bat .= 'echo %ERRORLEVEL% > ' . escapeshellarg($exitCodeFile) . "\r\n";
+            $script = $syncDir . '\\run.bat';
+            file_put_contents($script, $bat);
+            pclose(popen('start /B cmd /c ' . escapeshellarg($script), 'r'));
         } else {
-            $destDrive  = "{$remoteNombre}:{$carpetaDrive}";
-            $folderFlag = '';
+            $sh  = "#!/bin/bash\n";
+            $sh .= sprintf(
+                '%s copy %s %s %s %s --transfers=4 > %s 2>&1' . "\n",
+                escapeshellarg($rcloneBin),
+                escapeshellarg($tmpBase),
+                escapeshellarg($destDrive),
+                $confFlag, $folderFlag,
+                escapeshellarg($logFile)
+            );
+            $sh .= 'echo $? > ' . escapeshellarg($exitCodeFile) . "\n";
+            $script = $syncDir . '/run.sh';
+            file_put_contents($script, $sh);
+            chmod($script, 0755);
+            exec("nohup {$script} > /dev/null 2>&1 &");
         }
 
-        $confFlag = $rcloneConf ? '--config ' . escapeshellarg($rcloneConf) : '';
+        return response()->json([
+            'sync_id'    => $syncId,
+            'total'      => $totalArchivos,
+            'operadores' => $empleadosConDocs->count(),
+        ]);
+    }
 
-        $cmd = sprintf(
-            '%s copy %s %s %s %s --progress --transfers=4 --stats-one-line 2>&1',
-            escapeshellarg($rcloneBin),
-            escapeshellarg($tmpBase),
-            escapeshellarg($destDrive),
-            $confFlag,
-            $folderFlag
-        );
+    /*
+    |--------------------------------------------------------------------------
+    | SYNC DRIVE STATUS — Polling del job en background
+    |--------------------------------------------------------------------------
+    */
+    public function syncDriveStatus(string $syncId)
+    {
+        if (!preg_match('/^drive_[a-z0-9_.]+$/i', $syncId)) {
+            return response()->json(['status' => 'error', 'message' => 'ID inválido.'], 400);
+        }
 
-        $output    = [];
-        $exitCode  = 0;
-        exec($cmd, $output, $exitCode);
+        $syncDir      = storage_path('app/temp/' . $syncId);
+        $exitCodeFile = $syncDir . DIRECTORY_SEPARATOR . 'exitcode.txt';
+        $stateFile    = $syncDir . DIRECTORY_SEPARATOR . 'state.json';
+        $logFile      = $syncDir . DIRECTORY_SEPARATOR . 'rclone.log';
 
-        $outputStr = implode("\n", $output);
+        if (!is_dir($syncDir)) {
+            return response()->json(['status' => 'error', 'message' => 'Job no encontrado.'], 404);
+        }
 
-        // ── 5. Limpiar carpeta temporal ───────────────────────────
-        $this->limpiarDirectorio($tmpBase);
+        // Aún corriendo
+        if (!file_exists($exitCodeFile)) {
+            return response()->json(['status' => 'running']);
+        }
 
-        // ── 6. Marcar docs como enviados y responder ──────────────
+        $exitCode = (int) trim(file_get_contents($exitCodeFile));
+        $state    = json_decode(file_get_contents($stateFile), true);
+        $log      = file_exists($logFile) ? file_get_contents($logFile) : '';
+
+        $this->limpiarDirectorio($syncDir);
+
         if ($exitCode === 0) {
-            if (!empty($idsEnviados)) {
-                TblAdjunto::whereIn('Id', $idsEnviados)
+            if (!empty($state['ids_enviados'])) {
+                TblAdjunto::whereIn('Id', $state['ids_enviados'])
                     ->update(['EnvioDrive' => now(), 'updated_at' => now()]);
             }
-
-            $msg = "✅ Enviados {$totalArchivos} archivos de {$empleadosConDocs->count()} operadores "
-                 . "a Drive/{$carpetaDrive} (carpetas: CURP_{$siglas}/)\n\n{$outputStr}";
-            return back()->with('drive_resultado', $msg);
+            return response()->json([
+                'status'  => 'done',
+                'message' => "✅ Enviados {$state['total_archivos']} archivos de {$state['operadores_count']} operadores a Drive/{$state['carpeta_drive']}",
+            ]);
         }
 
-        return back()->with('error',
-            "rclone terminó con código {$exitCode}.\n\nOutput:\n{$outputStr}"
-        );
+        return response()->json([
+            'status'  => 'error',
+            'message' => "rclone terminó con código {$exitCode}.",
+            'output'  => $log,
+        ]);
     }
 
     /*

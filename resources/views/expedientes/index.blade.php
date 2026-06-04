@@ -360,78 +360,70 @@
     {{-- ============================================================
          MODAL DRIVE
     ============================================================ --}}
-    <div class="modal fade" id="modalDrive" tabindex="-1" role="dialog">
+    <div class="modal fade" id="modalDrive" tabindex="-1" role="dialog" data-backdrop="static" data-keyboard="false">
         <div class="modal-dialog modal-dialog-centered" role="document">
             <div class="modal-content">
-                <form action="{{ route('expedientes.drive.sync') }}" method="POST" id="formDrive">
+                <form id="formDrive">
                     @csrf
                     <div class="modal-header">
                         <h5 class="modal-title" style="font-size:1rem;">
                             <i class="fas fa-cloud-upload-alt mr-1"></i> Enviar expedientes a Google Drive
                         </h5>
-                        <button type="button" class="close" data-dismiss="modal"><span>&times;</span></button>
+                        <button type="button" class="close" data-dismiss="modal" id="btnCerrarDrive"><span>&times;</span></button>
                     </div>
                     <div class="modal-body">
 
-                        <div class="alert alert-info py-2 mb-3" style="font-size:.82rem;">
-                            <i class="fas fa-info-circle mr-1"></i>
-                            Se enviarán <strong>todos los documentos almacenados</strong> de los
-                            <strong>{{ $statsGlobales['marcadosParaDrive'] }}</strong> operador(es)
-                            marcados con <i class="fab fa-google-drive"></i>.
-                            Los que ya se enviaron antes <strong>no se sobrescriben</strong>.
-                        </div>
+                        {{-- Formulario inicial --}}
+                        <div id="driveFormulario">
+                            <div class="alert alert-info py-2 mb-3" style="font-size:.82rem;">
+                                <i class="fas fa-info-circle mr-1"></i>
+                                Se enviarán <strong>todos los documentos almacenados</strong> de los
+                                <strong>{{ $statsGlobales['marcadosParaDrive'] }}</strong> operador(es)
+                                marcados con <i class="fab fa-google-drive"></i>.
+                                Los que ya se enviaron antes <strong>no se sobrescriben</strong>.
+                            </div>
 
-                        {{-- Carpeta destino --}}
-                        <div class="form-group mb-3">
-                            <label class="font-weight-bold" style="font-size:.85rem;">
-                                Subcarpeta en Google Drive
-                            </label>
-                            <input type="text"
-                                   name="carpeta_drive"
-                                   class="form-control"
-                                   value="Expedientes_{{ now()->year }}"
-                                   required
-                                   placeholder="Ej: Expedientes_2026"
-                                   autocomplete="off">
-                            <small class="text-muted">
-                                Se creará dentro de la carpeta Drive configurada.
-                                Estructura: <code>Subcarpeta/CURP_SIGLAS/CURP_DOC.pdf</code>
-                            </small>
-                        </div>
+                            <div class="form-group mb-3">
+                                <label class="font-weight-bold" style="font-size:.85rem;">Subcarpeta en Google Drive</label>
+                                <input type="text" name="carpeta_drive" id="carpetaDrive"
+                                       class="form-control"
+                                       value="Expedientes_{{ now()->year }}"
+                                       required placeholder="Ej: Expedientes_2026" autocomplete="off">
+                                <small class="text-muted">
+                                    Estructura: <code>Subcarpeta/CURP_SIGLAS/CURP_DOC.pdf</code>
+                                </small>
+                            </div>
 
-                        {{-- Siglas empresa --}}
-                        <div class="form-group mb-2">
-                            <label class="font-weight-bold" style="font-size:.85rem;">
-                                Siglas de la empresa
-                            </label>
-                            <input type="text"
-                                   name="siglas"
-                                   class="form-control"
-                                   maxlength="10"
-                                   placeholder="Ej: MO"
-                                   required
-                                   style="max-width:160px;text-transform:uppercase;"
-                                   oninput="this.value=this.value.toUpperCase()"
-                                   autocomplete="off">
-                            <small class="text-muted">
-                                Sufijo por operador: <code>CURP_<strong>SIGLAS</strong></code>
-                            </small>
-                        </div>
-
-                        {{-- Progreso (visible solo al enviar) --}}
-                        <div id="driveProgreso" class="d-none mt-3">
-                            <div class="d-flex align-items-center p-2 bg-light rounded">
-                                <div class="spinner-border spinner-border-sm text-success mr-2" role="status"></div>
-                                <span style="font-size:.85rem;">
-                                    Enviando… puede tardar 1–3 minutos. No cierres esta ventana.
-                                </span>
+                            <div class="form-group mb-0">
+                                <label class="font-weight-bold" style="font-size:.85rem;">Siglas de la empresa</label>
+                                <input type="text" name="siglas" id="siglasEmpresa"
+                                       class="form-control" maxlength="10"
+                                       placeholder="Ej: MO" required
+                                       style="max-width:160px;text-transform:uppercase;"
+                                       oninput="this.value=this.value.toUpperCase()" autocomplete="off">
+                                <small class="text-muted">Sufijo por operador: <code>CURP_<strong>SIGLAS</strong></code></small>
                             </div>
                         </div>
 
+                        {{-- Progreso (visible durante el envío) --}}
+                        <div id="driveProgreso" class="d-none">
+                            <div class="text-center py-2">
+                                <div class="spinner-border text-success mb-2" role="status" style="width:2.5rem;height:2.5rem;"></div>
+                                <p class="font-weight-bold mb-1" id="driveProgresoTitulo">Preparando archivos…</p>
+                                <p class="text-muted mb-0" style="font-size:.82rem;">
+                                    Subiendo a Google Drive en segundo plano.<br>
+                                    <strong>No cierres esta ventana.</strong>
+                                </p>
+                            </div>
+                        </div>
+
+                        {{-- Resultado --}}
+                        <div id="driveResultado" class="d-none"></div>
+
                     </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary btn-block-xs" data-dismiss="modal">Cancelar</button>
-                        <button type="submit" class="btn btn-success btn-block-xs" id="btnEnviarDrive">
+                    <div class="modal-footer" id="driveFooter">
+                        <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancelar</button>
+                        <button type="submit" class="btn btn-success" id="btnEnviarDrive">
                             <i class="fas fa-cloud-upload-alt mr-1"></i> Enviar a Drive
                         </button>
                     </div>
@@ -483,13 +475,110 @@
         }, 100);
     });
 
-    /* ── Feedback visual al enviar a Drive ── */
-    document.getElementById('formDrive')?.addEventListener('submit', function () {
-        document.getElementById('btnEnviarDrive').disabled = true;
-        document.getElementById('btnEnviarDrive').innerHTML =
-            '<i class="fas fa-spinner fa-spin mr-1"></i> Enviando…';
-        document.getElementById('driveProgreso').classList.remove('d-none');
-    });
+    /* ── Drive: AJAX submit + polling de estado ── */
+    (function () {
+        const form         = document.getElementById('formDrive');
+        const btnEnviar    = document.getElementById('btnEnviarDrive');
+        const formulario   = document.getElementById('driveFormulario');
+        const progreso     = document.getElementById('driveProgreso');
+        const progresoTxt  = document.getElementById('driveProgresoTitulo');
+        const resultado    = document.getElementById('driveResultado');
+        const footer       = document.getElementById('driveFooter');
+        const btnCerrar    = document.getElementById('btnCerrarDrive');
+        const statusBase   = '{{ route("expedientes.drive.status", ["syncId" => "__ID__"]) }}';
+        let   pollTimer    = null;
+
+        function resetModal() {
+            formulario.classList.remove('d-none');
+            progreso.classList.add('d-none');
+            resultado.classList.add('d-none');
+            resultado.innerHTML = '';
+            footer.innerHTML = `
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancelar</button>
+                <button type="submit" class="btn btn-success" id="btnEnviarDrive">
+                    <i class="fas fa-cloud-upload-alt mr-1"></i> Enviar a Drive
+                </button>`;
+            footer.querySelector('[type=submit]')?.addEventListener('click', () => form.requestSubmit?.() || form.dispatchEvent(new Event('submit')));
+        }
+
+        $('#modalDrive').on('hidden.bs.modal', function () {
+            if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+            resetModal();
+        });
+
+        form?.addEventListener('submit', async function (e) {
+            e.preventDefault();
+
+            const carpeta = document.getElementById('carpetaDrive').value.trim();
+            const siglas  = document.getElementById('siglasEmpresa').value.trim();
+            if (!carpeta || !siglas) return;
+
+            // Mostrar progreso
+            formulario.classList.add('d-none');
+            progreso.classList.remove('d-none');
+            progresoTxt.textContent = 'Preparando archivos…';
+            footer.innerHTML = `<span class="text-muted" style="font-size:.8rem;">
+                <i class="fas fa-lock mr-1"></i> Espera a que termine el envío
+            </span>`;
+            btnCerrar.classList.add('d-none');
+
+            try {
+                const token = document.querySelector('meta[name="csrf-token"]')?.content
+                           || document.querySelector('input[name="_token"]')?.value || '';
+
+                const res  = await fetch('{{ route("expedientes.drive.sync") }}', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': token, 'Accept': 'application/json' },
+                    body: JSON.stringify({ carpeta_drive: carpeta, siglas: siglas }),
+                });
+                const data = await res.json();
+
+                if (!res.ok) {
+                    mostrarResultado('error', data.error || 'Error al iniciar el envío.');
+                    return;
+                }
+
+                progresoTxt.textContent = `Subiendo ${data.total} archivos de ${data.operadores} operadores…`;
+
+                // Polling cada 3 segundos
+                const statusUrl = statusBase.replace('__ID__', data.sync_id);
+                pollTimer = setInterval(async () => {
+                    try {
+                        const sr   = await fetch(statusUrl, { headers: { 'Accept': 'application/json' } });
+                        const st   = await sr.json();
+
+                        if (st.status === 'running') return;   // sigue corriendo
+
+                        clearInterval(pollTimer); pollTimer = null;
+
+                        if (st.status === 'done') {
+                            mostrarResultado('success', st.message);
+                        } else {
+                            mostrarResultado('error', st.message + (st.output ? '\n\n' + st.output : ''));
+                        }
+                    } catch (_) { /* red, reintenta en siguiente tick */ }
+                }, 3000);
+
+            } catch (err) {
+                mostrarResultado('error', 'Error de conexión: ' + err.message);
+            }
+        });
+
+        function mostrarResultado(tipo, mensaje) {
+            progreso.classList.add('d-none');
+            btnCerrar.classList.remove('d-none');
+            resultado.classList.remove('d-none');
+            resultado.innerHTML = tipo === 'success'
+                ? `<div class="alert alert-success mb-0"><i class="fas fa-check-circle mr-1"></i>${mensaje}</div>`
+                : `<div class="alert alert-danger mb-0"><i class="fas fa-exclamation-circle mr-1"></i>
+                   <strong>${mensaje.split('\n')[0]}</strong>
+                   ${mensaje.includes('\n') ? '<pre style="font-size:.72rem;margin-top:.4rem;white-space:pre-wrap;">' + mensaje.split('\n').slice(1).join('\n').trim() + '</pre>' : ''}
+                   </div>`;
+            footer.innerHTML = `<button type="button" class="btn btn-${tipo === 'success' ? 'success' : 'secondary'}"
+                data-dismiss="modal">${tipo === 'success' ? 'Listo ✓' : 'Cerrar'}</button>`;
+            if (tipo === 'success') location.reload();
+        }
+    })();
 
 })();
 </script>
