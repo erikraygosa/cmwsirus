@@ -59,5 +59,29 @@ style="background-image: url('{{ asset('images/back2.png') }}');">
         @endif -->
     </div>
 
+
+<script>
+(function () {
+    function refreshCsrf() {
+        fetch('/csrf-token', { credentials: 'same-origin' })
+            .then(function (r) { return r.ok ? r.json() : null; })
+            .then(function (data) {
+                if (!data || !data.token) return;
+                document.querySelectorAll('input[name="_token"]').forEach(function (el) {
+                    el.value = data.token;
+                });
+                var meta = document.querySelector('meta[name="csrf-token"]');
+                if (meta) meta.setAttribute('content', data.token);
+            })
+            .catch(function () {});
+    }
+
+    document.addEventListener('visibilitychange', function () {
+        if (document.visibilityState === 'visible') refreshCsrf();
+    });
+
+    setInterval(refreshCsrf, 30 * 60 * 1000);
+})();
+</script>
 </body>
 </html>

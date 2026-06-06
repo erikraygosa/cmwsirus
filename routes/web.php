@@ -20,6 +20,10 @@ Route::get('/', function () {
     return view('auth.login');
 });
 
+Route::get('/csrf-token', function () {
+    return response()->json(['token' => csrf_token()]);
+});
+
 Route::get('/horariodia/tv', [HorarioDiaController::class, 'tv'])->name('horario.tv');
 
 /* ============================================================
