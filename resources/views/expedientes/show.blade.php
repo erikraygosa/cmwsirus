@@ -366,10 +366,27 @@
                         </div>
                     </div>
                     <div id="camPreviewBox" class="d-none mb-3 text-center">
-                        <img id="camPreviewImg" src="" class="img-fluid rounded border"
-                             style="max-height:260px;object-fit:contain;">
+                        <div style="position:relative;display:inline-block;">
+                            <img id="camPreviewImg" src="" class="img-fluid rounded border"
+                                 style="max-height:260px;object-fit:contain;">
+                            <canvas id="cropCanvas" style="position:absolute;top:0;left:0;width:100%;height:100%;cursor:crosshair;display:none;"></canvas>
+                        </div>
+                        <div id="cropHint" class="text-info mt-1 d-none" style="font-size:.75rem;">
+                            <i class="fas fa-crop-alt mr-1"></i>Arrastra sobre la foto para seleccionar el área a guardar
+                        </div>
                         <div class="text-muted mt-1" style="font-size:.78rem;">
                             Vista previa — verifica que el texto sea legible antes de guardar
+                        </div>
+                    </div>
+                    <div id="regionCapturaRow" class="d-none mb-3">
+                        <label class="text-muted" style="font-size:.78rem;font-weight:600;text-transform:uppercase;">Región a guardar</label>
+                        <div class="btn-group btn-group-sm w-100" id="btnGrupoRegion">
+                            <button type="button" class="btn btn-outline-secondary active" data-region="completa">
+                                <i class="fas fa-expand mr-1"></i> Completa
+                            </button>
+                            <button type="button" class="btn btn-outline-secondary" data-region="recorte">
+                                <i class="fas fa-crop-alt mr-1"></i> Seleccionar área
+                            </button>
                         </div>
                     </div>
                     <input type="file" id="inputCamara" accept="image/*" capture="environment" class="d-none">
@@ -473,7 +490,8 @@
     .card { transition: box-shadow .2s; }
     .card:hover { box-shadow: 0 2px 12px rgba(0,0,0,.12); }
     #btnGrupoColor .btn.active,
-    #btnGrupoFormato .btn.active { background-color:#343a40; color:#fff; border-color:#343a40; }
+    #btnGrupoFormato .btn.active,
+    #btnGrupoRegion .btn.active { background-color:#343a40; color:#fff; border-color:#343a40; }
 </style>
 @stop
 
@@ -488,6 +506,8 @@
     let _modoColor    = 'color';
     let _fmtoSalida   = 'pdf';
     let _tipoCamara   = '';
+    let _modoRegion   = 'completa';
+    let _cropRect     = null;
 
     /* ── MODAL SUBIR ARCHIVO ─────────────────────────────────── */
     document.querySelectorAll('.btn-subir-doc').forEach(btn => {
@@ -526,10 +546,17 @@
         btn.addEventListener('click', function () {
             _tipoCamara  = this.dataset.tipo;
             _imgOriginal = _imgProcesada = null;
+            _modoRegion  = 'completa';
+            _cropRect    = null;
             document.getElementById('labelTipoNombreCam').textContent = this.dataset.nombre;
             document.getElementById('inputCamara').value              = '';
             document.getElementById('camPreviewBox').classList.add('d-none');
-            document.getElementById('btnGuardarCam').disabled         = true;
+            document.getElementById('regionCapturaRow').classList.add('d-none');
+            document.getElementById('cropHint').classList.add('d-none');
+            document.querySelectorAll('#btnGrupoRegion .btn').forEach(b => b.classList.remove('active'));
+            document.querySelector('#btnGrupoRegion [data-region="completa"]').classList.add('active');
+            resetCropCanvas();
+            document.getElementById('btnGuardarCam').disabled = true;
             actualizarLabel();
             $('#modalCamara').modal('show');
         });
@@ -553,6 +580,97 @@
         });
     });
 
+    document.querySelectorAll('#btnGrupoRegion .btn').forEach(btn => {
+        btn.addEventListener('click', function () {
+            document.querySelectorAll('#btnGrupoRegion .btn').forEach(b => b.classList.remove('active'));
+            this.classList.add('active');
+            _modoRegion = this.dataset.region;
+            const canvas = document.getElementById('cropCanvas');
+            const hint   = document.getElementById('cropHint');
+            if (_modoRegion === 'recorte') {
+                canvas.style.display = 'block';
+                hint.classList.remove('d-none');
+                _cropRect = null;
+                drawCropOverlay(null);
+            } else {
+                canvas.style.display = 'none';
+                hint.classList.add('d-none');
+                _cropRect = null;
+            }
+        });
+    });
+
+    (function initCropCanvas() {
+        const canvas = document.getElementById('cropCanvas');
+        let dragging = false, sx = 0, sy = 0, ex = 0, ey = 0;
+
+        function getPos(e, el) {
+            const r = el.getBoundingClientRect();
+            const src = e.touches ? e.touches[0] : e;
+            return {
+                x: (src.clientX - r.left) / r.width,
+                y: (src.clientY - r.top)  / r.height
+            };
+        }
+
+        function drawCropOverlay(rect) {
+            const w = canvas.width  = canvas.offsetWidth;
+            const h = canvas.height = canvas.offsetHeight;
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, w, h);
+            if (!rect) return;
+            const x1 = rect.x1 * w, y1 = rect.y1 * h;
+            const x2 = rect.x2 * w, y2 = rect.y2 * h;
+            ctx.fillStyle = 'rgba(0,0,0,0.5)';
+            ctx.fillRect(0, 0, w, h);
+            ctx.clearRect(x1, y1, x2 - x1, y2 - y1);
+            ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+            ctx.lineWidth   = 2;
+            ctx.setLineDash([6, 3]);
+            ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
+        }
+
+        function onStart(e) {
+            if (_modoRegion !== 'recorte') return;
+            e.preventDefault();
+            dragging = true;
+            const pos = getPos(e, canvas);
+            sx = pos.x; sy = pos.y;
+        }
+        function onMove(e) {
+            if (!dragging) return;
+            e.preventDefault();
+            const pos = getPos(e, canvas);
+            ex = pos.x; ey = pos.y;
+            drawCropOverlay({ x1: Math.min(sx, ex), y1: Math.min(sy, ey), x2: Math.max(sx, ex), y2: Math.max(sy, ey) });
+        }
+        function onEnd() {
+            if (!dragging) return;
+            dragging = false;
+            if (Math.abs(ex - sx) > 0.02 && Math.abs(ey - sy) > 0.02) {
+                _cropRect = { x1: Math.min(sx, ex), y1: Math.min(sy, ey), x2: Math.max(sx, ex), y2: Math.max(sy, ey) };
+            } else {
+                _cropRect = null;
+                drawCropOverlay(null);
+            }
+        }
+
+        canvas.addEventListener('mousedown',  onStart);
+        canvas.addEventListener('mousemove',  onMove);
+        canvas.addEventListener('mouseup',    onEnd);
+        canvas.addEventListener('mouseleave', onEnd);
+        canvas.addEventListener('touchstart', onStart, { passive: false });
+        canvas.addEventListener('touchmove',  onMove,  { passive: false });
+        canvas.addEventListener('touchend',   onEnd);
+
+        window.drawCropOverlay = drawCropOverlay;
+        window.resetCropCanvas = function () {
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            canvas.style.display = 'none';
+        };
+    })();
+
     function actualizarLabel() {
         document.getElementById('labelFormatoSalida').textContent =
             _fmtoSalida === 'pdf' ? 'Se guardará como PDF carta' : 'Se guardará como imagen JPEG';
@@ -575,6 +693,7 @@
             _imgProcesada = dataUrl;
             document.getElementById('camPreviewImg').src = dataUrl;
             document.getElementById('camPreviewBox').classList.remove('d-none');
+            document.getElementById('regionCapturaRow').classList.remove('d-none');
             document.getElementById('btnGuardarCam').disabled = false;
         });
     }
@@ -602,6 +721,22 @@
                 ctx.putImageData(id, 0, 0);
             }
             cb(canvas.toDataURL('image/jpeg', 0.92));
+        };
+        img.src = dataUrl;
+    }
+
+    function aplicarCrop(dataUrl, cb) {
+        if (!_cropRect || _modoRegion !== 'recorte') { cb(dataUrl); return; }
+        const img = new Image();
+        img.onload = function () {
+            const x = Math.round(_cropRect.x1 * img.width);
+            const y = Math.round(_cropRect.y1 * img.height);
+            const w = Math.round((_cropRect.x2 - _cropRect.x1) * img.width);
+            const h = Math.round((_cropRect.y2 - _cropRect.y1) * img.height);
+            const c = document.createElement('canvas');
+            c.width = w; c.height = h;
+            c.getContext('2d').drawImage(img, x, y, w, h, 0, 0, w, h);
+            cb(c.toDataURL('image/jpeg', 0.92));
         };
         img.src = dataUrl;
     }
@@ -647,12 +782,14 @@
                 });
         };
 
-        if (_fmtoSalida === 'pdf') {
-            btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Generando PDF…';
-            imagenAPdf(_imgProcesada, blob => enviar(blob, _tipoCamara + '_' + ts + '.pdf'));
-        } else {
-            fetch(_imgProcesada).then(r => r.blob()).then(blob => enviar(blob, _tipoCamara + '_' + ts + '.jpg'));
-        }
+        aplicarCrop(_imgProcesada, dataUrlCrop => {
+            if (_fmtoSalida === 'pdf') {
+                btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Generando PDF…';
+                imagenAPdf(dataUrlCrop, blob => enviar(blob, _tipoCamara + '_' + ts + '.pdf'));
+            } else {
+                fetch(dataUrlCrop).then(r => r.blob()).then(blob => enviar(blob, _tipoCamara + '_' + ts + '.jpg'));
+            }
+        });
     });
 
     /* Preview imagen */
