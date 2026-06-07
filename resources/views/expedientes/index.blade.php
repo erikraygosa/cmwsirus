@@ -154,13 +154,13 @@
                 <table class="table table-hover table-sm mb-0">
                     <thead class="thead-light">
                         <tr>
-                            <th width="60">#</th>
+                            <th width="50">#</th>
                             <th>Operador</th>
-                            <th class="d-none d-lg-table-cell" width="90">Unidad</th>
-                            <th class="d-none d-lg-table-cell">CURP</th>
-                            <th width="200">Completitud</th>
+                            <th class="d-none d-lg-table-cell" width="80">Unidad</th>
+                            <th class="d-none d-md-table-cell">CURP</th>
+                            <th>Completitud</th>
                             <th width="80" class="text-center d-none d-md-table-cell" title="Marcado / enviado al Drive">Drive</th>
-                            <th width="90" class="text-center">Acción</th>
+                            <th width="110" class="text-center">Acción</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -181,8 +181,19 @@
                                 <td class="align-middle d-none d-lg-table-cell text-muted" style="font-size:.82rem;">
                                     {{ $emp->Unidad ?? '—' }}
                                 </td>
-                                <td class="align-middle d-none d-lg-table-cell text-muted" style="font-size:.78rem;">
-                                    {{ $emp->CURP ?? '—' }}
+                                <td class="align-middle d-none d-md-table-cell" style="font-size:.78rem;">
+                                    @if($emp->CURP)
+                                        <span class="text-muted">{{ $emp->CURP }}</span>
+                                    @else
+                                        <button type="button"
+                                                class="btn btn-xs btn-outline-warning btn-editar-curp"
+                                                data-id="{{ $emp->IdEmpleado }}"
+                                                data-nombre="{{ $emp->Nombre }}"
+                                                style="font-size:.72rem;padding:1px 6px;"
+                                                title="Agregar CURP">
+                                            <i class="fas fa-edit mr-1"></i>Sin CURP
+                                        </button>
+                                    @endif
                                 </td>
                                 <td class="align-middle">
                                     <div class="d-flex align-items-center" style="gap:.4rem;">
@@ -217,12 +228,21 @@
                                     </form>
                                 </td>
                                 <td class="align-middle text-center">
-                                    <a href="{{ route('expedientes.show', $emp->IdEmpleado) }}"
-                                       class="btn btn-sm btn-outline-primary"
-                                       title="Ver expediente">
-                                        <i class="fas fa-folder-open"></i>
-                                        <span class="d-none d-xl-inline ml-1">Abrir</span>
-                                    </a>
+                                    <div class="btn-group btn-group-sm" role="group">
+                                        <a href="{{ route('expedientes.show', $emp->IdEmpleado) }}"
+                                           class="btn btn-outline-primary"
+                                           title="Ver expediente">
+                                            <i class="fas fa-folder-open"></i>
+                                            <span class="d-none d-xl-inline ml-1">Abrir</span>
+                                        </a>
+                                        <button type="button"
+                                                class="btn btn-outline-danger btn-dar-baja"
+                                                data-id="{{ $emp->IdEmpleado }}"
+                                                data-nombre="{{ $emp->Nombre }}"
+                                                title="Dar de baja">
+                                            <i class="fas fa-user-times"></i>
+                                        </button>
+                                    </div>
                                 </td>
                             </tr>
                         @empty
@@ -358,6 +378,71 @@
     </div>
 
     {{-- ============================================================
+         MODAL EDITAR CURP
+    ============================================================ --}}
+    <div class="modal fade" id="modalEditarCurp" tabindex="-1" role="dialog">
+        <div class="modal-dialog modal-sm" role="document">
+            <div class="modal-content">
+                <form id="formEditarCurp" method="POST">
+                    @csrf
+                    @method('PATCH')
+                    <div class="modal-header py-2">
+                        <h6 class="modal-title"><i class="fas fa-id-card mr-1"></i> Agregar CURP</h6>
+                        <button type="button" class="close" data-dismiss="modal"><span>&times;</span></button>
+                    </div>
+                    <div class="modal-body">
+                        <p class="text-muted mb-2" style="font-size:.82rem;" id="labelNombreCurp"></p>
+                        <input type="text"
+                               name="curp"
+                               id="inputCurpEditar"
+                               class="form-control text-uppercase"
+                               maxlength="18"
+                               placeholder="CURP (18 caracteres)"
+                               oninput="this.value=this.value.toUpperCase()"
+                               required
+                               autocomplete="off">
+                        <small class="text-muted">Ejemplo: ABCD123456HDFXXX01</small>
+                    </div>
+                    <div class="modal-footer py-2">
+                        <button type="button" class="btn btn-sm btn-secondary" data-dismiss="modal">Cancelar</button>
+                        <button type="submit" class="btn btn-sm btn-warning">
+                            <i class="fas fa-save mr-1"></i> Guardar CURP
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    {{-- ============================================================
+         MODAL CONFIRMAR BAJA
+    ============================================================ --}}
+    <div class="modal fade" id="modalBaja" tabindex="-1" role="dialog">
+        <div class="modal-dialog modal-sm" role="document">
+            <div class="modal-content">
+                <form id="formBaja" method="POST">
+                    @csrf
+                    <div class="modal-header py-2 bg-danger">
+                        <h6 class="modal-title text-white"><i class="fas fa-user-times mr-1"></i> Dar de baja</h6>
+                        <button type="button" class="close text-white" data-dismiss="modal"><span>&times;</span></button>
+                    </div>
+                    <div class="modal-body">
+                        <p class="mb-1">¿Dar de baja al operador?</p>
+                        <p class="font-weight-bold mb-1" id="labelNombreBaja"></p>
+                        <small class="text-muted">Su estatus cambiará a "B" y dejará de aparecer en la lista activa.</small>
+                    </div>
+                    <div class="modal-footer py-2">
+                        <button type="button" class="btn btn-sm btn-secondary" data-dismiss="modal">Cancelar</button>
+                        <button type="submit" class="btn btn-sm btn-danger">
+                            <i class="fas fa-user-times mr-1"></i> Confirmar baja
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    {{-- ============================================================
          MODAL DRIVE
     ============================================================ --}}
     <div class="modal fade" id="modalDrive" tabindex="-1" role="dialog" data-backdrop="static" data-keyboard="false">
@@ -454,6 +539,27 @@
 @section('js')
 <script>
 (function () {
+
+    /* ── Modal editar CURP ── */
+    document.querySelectorAll('.btn-editar-curp').forEach(btn => {
+        btn.addEventListener('click', function () {
+            document.getElementById('labelNombreCurp').textContent = this.dataset.nombre;
+            document.getElementById('inputCurpEditar').value       = '';
+            document.getElementById('formEditarCurp').action       =
+                '/expedientes/' + this.dataset.id + '/curp';
+            $('#modalEditarCurp').modal('show');
+        });
+    });
+
+    /* ── Modal dar de baja ── */
+    document.querySelectorAll('.btn-dar-baja').forEach(btn => {
+        btn.addEventListener('click', function () {
+            document.getElementById('labelNombreBaja').textContent = this.dataset.nombre;
+            document.getElementById('formBaja').action             =
+                '/expedientes/' + this.dataset.id + '/baja';
+            $('#modalBaja').modal('show');
+        });
+    });
 
     /* ── Seleccionar / deseleccionar en modal ZIP masivo ── */
     document.querySelector('.sel-masivo')?.addEventListener('click', e => {

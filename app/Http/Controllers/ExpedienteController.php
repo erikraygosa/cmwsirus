@@ -560,6 +560,41 @@ class ExpedienteController extends Controller
 
     /*
     |--------------------------------------------------------------------------
+    | UPDATE CURP — Agrega / corrige el CURP de un operador
+    |--------------------------------------------------------------------------
+    */
+    public function updateCurp(Request $request, int $id)
+    {
+        $request->validate([
+            'curp' => ['required', 'string', 'size:18', 'regex:/^[A-Z]{4}[0-9]{6}[HM][A-Z]{5}[0-9A-Z]{2}$/i'],
+        ], [
+            'curp.size'  => 'El CURP debe tener exactamente 18 caracteres.',
+            'curp.regex' => 'El formato del CURP no es válido.',
+        ]);
+
+        $empleado = CatEmpleado::findOrFail($id);
+        $empleado->update(['CURP' => strtoupper(trim($request->curp))]);
+
+        return back()->with('success', 'CURP actualizado correctamente.');
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | DAR DE BAJA — Cambia Estatus a "B" (desaparece de la lista activa)
+    |--------------------------------------------------------------------------
+    */
+    public function darDeBaja(int $id)
+    {
+        $empleado = CatEmpleado::findOrFail($id);
+        $nombre   = $empleado->Nombre;
+        $empleado->update(['Estatus' => 'B']);
+
+        return redirect()->route('expedientes.index')
+            ->with('success', "Operador \"{$nombre}\" dado de baja correctamente.");
+    }
+
+    /*
+    |--------------------------------------------------------------------------
     | Helper — eliminar directorio recursivo
     |--------------------------------------------------------------------------
     */
