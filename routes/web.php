@@ -112,6 +112,7 @@ Route::middleware([
         Route::post('/{id}/envio',           [ExpedienteController::class, 'toggleEnvio'])  ->name('envio.toggle');
         Route::post('/{id}/vigencia',        [ExpedienteController::class, 'updateVigencia'])->name('vigencia.update');
         Route::patch('/{id}/curp',           [ExpedienteController::class, 'updateCurp'])   ->name('curp.update');
+        Route::patch('/{id}/nombre',         [ExpedienteController::class, 'updateNombre']) ->name('nombre.update');
         Route::post('/{id}/baja',            [ExpedienteController::class, 'darDeBaja'])    ->name('baja');
     });
 

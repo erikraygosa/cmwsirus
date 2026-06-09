@@ -580,6 +580,25 @@ class ExpedienteController extends Controller
 
     /*
     |--------------------------------------------------------------------------
+    | UPDATE NOMBRE — Corrige el nombre del operador
+    |--------------------------------------------------------------------------
+    */
+    public function updateNombre(Request $request, int $id)
+    {
+        $request->validate([
+            'nombre' => ['required', 'string', 'min:3', 'max:200'],
+        ], [
+            'nombre.min' => 'El nombre debe tener al menos 3 caracteres.',
+        ]);
+
+        $empleado = CatEmpleado::findOrFail($id);
+        $empleado->update(['Nombre' => strtoupper(trim($request->nombre))]);
+
+        return back()->with('success', 'Nombre actualizado correctamente.');
+    }
+
+    /*
+    |--------------------------------------------------------------------------
     | DAR DE BAJA — Cambia Estatus a "B" (desaparece de la lista activa)
     |--------------------------------------------------------------------------
     */

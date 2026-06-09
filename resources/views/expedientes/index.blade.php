@@ -177,6 +177,14 @@
                                 <td class="align-middle">
                                     <i class="fas {{ $icono }} mr-1"></i>
                                     <strong>{{ $emp->Nombre }}</strong>
+                                    <button type="button"
+                                            class="btn btn-link btn-editar-nombre p-0 ml-1"
+                                            data-id="{{ $emp->IdEmpleado }}"
+                                            data-nombre="{{ $emp->Nombre }}"
+                                            title="Editar nombre"
+                                            style="line-height:1;">
+                                        <i class="fas fa-pen" style="font-size:.6rem;color:#bbb;"></i>
+                                    </button>
                                 </td>
                                 <td class="align-middle d-none d-lg-table-cell text-muted" style="font-size:.82rem;">
                                     {{ $emp->Unidad ?? '—' }}
@@ -415,6 +423,43 @@
     </div>
 
     {{-- ============================================================
+         MODAL EDITAR NOMBRE
+    ============================================================ --}}
+    <div class="modal fade" id="modalEditarNombre" tabindex="-1" role="dialog">
+        <div class="modal-dialog modal-sm" role="document">
+            <div class="modal-content">
+                <form id="formEditarNombre" method="POST">
+                    @csrf
+                    @method('PATCH')
+                    <div class="modal-header py-2">
+                        <h6 class="modal-title"><i class="fas fa-user-edit mr-1"></i> Editar nombre</h6>
+                        <button type="button" class="close" data-dismiss="modal"><span>&times;</span></button>
+                    </div>
+                    <div class="modal-body">
+                        <p class="text-muted mb-2" style="font-size:.78rem;">Nombre actual:</p>
+                        <p class="font-weight-bold mb-2" id="labelNombreActual" style="font-size:.85rem;"></p>
+                        <input type="text"
+                               name="nombre"
+                               id="inputNombreEditar"
+                               class="form-control text-uppercase"
+                               maxlength="200"
+                               placeholder="Nombre completo"
+                               oninput="this.value=this.value.toUpperCase()"
+                               required
+                               autocomplete="off">
+                    </div>
+                    <div class="modal-footer py-2">
+                        <button type="button" class="btn btn-sm btn-secondary" data-dismiss="modal">Cancelar</button>
+                        <button type="submit" class="btn btn-sm btn-primary">
+                            <i class="fas fa-save mr-1"></i> Guardar nombre
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    {{-- ============================================================
          MODAL CONFIRMAR BAJA
     ============================================================ --}}
     <div class="modal fade" id="modalBaja" tabindex="-1" role="dialog">
@@ -548,6 +593,17 @@
             document.getElementById('formEditarCurp').action       =
                 '/expedientes/' + this.dataset.id + '/curp';
             $('#modalEditarCurp').modal('show');
+        });
+    });
+
+    /* ── Modal editar nombre ── */
+    document.querySelectorAll('.btn-editar-nombre').forEach(btn => {
+        btn.addEventListener('click', function () {
+            document.getElementById('labelNombreActual').textContent = this.dataset.nombre;
+            document.getElementById('inputNombreEditar').value       = this.dataset.nombre;
+            document.getElementById('formEditarNombre').action       =
+                '/expedientes/' + this.dataset.id + '/nombre';
+            $('#modalEditarNombre').modal('show');
         });
     });
 
