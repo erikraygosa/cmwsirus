@@ -30,6 +30,7 @@ class ExpedienteController extends Controller
     public function index(Request $request)
     {
         $busqueda  = $request->input('q');
+        $soloDrive = $request->boolean('drive');
         $totalDocs = collect(config('expediente_docs.documentos'))->filter(fn($d) => $d['obligatorio'] ?? true)->count();
 
         // Operadores activos (status = A)
@@ -38,6 +39,9 @@ class ExpedienteController extends Controller
                     $sub->where('Nombre', 'like', "%{$busqueda}%")
                         ->orWhere('CURP', 'like', "%{$busqueda}%");
                 });
+            })
+            ->when($soloDrive, function ($q) {
+                $q->where('envio', 1);
             })
             ->orderBy('Nombre')
             ->paginate(25)
@@ -106,7 +110,7 @@ class ExpedienteController extends Controller
             'marcadosParaDrive'=> $marcadosParaDrive,
         ];
 
-        return view('expedientes.index', compact('empleados', 'completitud', 'busqueda', 'totalDocs', 'statsGlobales'));
+        return view('expedientes.index', compact('empleados', 'completitud', 'busqueda', 'soloDrive', 'totalDocs', 'statsGlobales'));
     }
 
     /*

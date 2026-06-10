@@ -42,7 +42,7 @@
     <div class="card card-outline card-primary mb-3">
         <div class="card-body py-2">
             <form method="GET" action="{{ route('expedientes.index') }}" class="form-inline" id="formBusqueda">
-                <div class="input-group w-100">
+                <div class="input-group w-100 flex-nowrap">
                     <input type="text"
                            name="q"
                            id="inputBusqueda"
@@ -55,13 +55,21 @@
                             <i class="fas fa-search"></i>
                             <span class="d-none d-sm-inline ml-1">Buscar</span>
                         </button>
-                        @if($busqueda)
+                        @if($busqueda || $soloDrive)
                             <a href="{{ route('expedientes.index') }}" class="btn btn-secondary">
                                 <i class="fas fa-times"></i>
                                 <span class="d-none d-sm-inline ml-1">Limpiar</span>
                             </a>
                         @endif
                     </div>
+                </div>
+                <div class="custom-control custom-checkbox mt-2 mt-sm-0 ml-sm-3">
+                    <input type="checkbox" class="custom-control-input" id="chkSoloDrive" name="drive" value="1"
+                           {{ $soloDrive ? 'checked' : '' }}
+                           onchange="document.getElementById('formBusqueda').submit()">
+                    <label class="custom-control-label" for="chkSoloDrive" style="font-size:.85rem;">
+                        <i class="fab fa-google-drive mr-1"></i> Solo marcados para Drive
+                    </label>
                 </div>
             </form>
         </div>
