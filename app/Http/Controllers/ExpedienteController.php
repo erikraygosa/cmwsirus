@@ -378,6 +378,16 @@ class ExpedienteController extends Controller
             );
         }
 
+        // ── 1b. Validar que todos tengan CURP registrado ──────────
+        $sinCurp = $empleadosConDocs->filter(fn($emp) => empty(trim((string) $emp->CURP)));
+
+        if ($sinCurp->isNotEmpty()) {
+            $nombres = $sinCurp->pluck('Nombre')->implode(', ');
+            return response()->json([
+                'error' => "Los siguientes operadores no tienen CURP registrado y deben completarlo antes de enviar a Drive: {$nombres}.",
+            ], 422);
+        }
+
         // ── 2. Directorio de trabajo para este job ────────────────
         $syncId  = 'drive_' . uniqid('', true);
         $syncDir = storage_path('app/temp/' . $syncId);
