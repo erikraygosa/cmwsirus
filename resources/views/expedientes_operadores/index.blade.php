@@ -194,9 +194,9 @@
                                         <i class="fas fa-pen" style="font-size:.6rem;color:#bbb;"></i>
                                     </button>
                                     @if($info['duplicado_anterior'])
-                                        <span class="badge badge-warning ml-1" style="font-size:.62rem;"
-                                              title="Ya existe expediente con documentos en el sistema anterior (catempleados) para este mismo nombre/CURP. Evita duplicar el envío.">
-                                            <i class="fas fa-exclamation-triangle mr-1"></i>Ya existe en sistema anterior
+                                        <span class="badge badge-info ml-1" style="font-size:.62rem;cursor:help;"
+                                              title="Documentos ya capturados en el sistema anterior: {{ $info['docs_anterior']->implode(', ') }}. Evita duplicar el envío.">
+                                            <i class="fas fa-check-double mr-1"></i>Capturado
                                         </span>
                                     @endif
                                 </td>

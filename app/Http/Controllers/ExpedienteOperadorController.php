@@ -69,14 +69,29 @@ class ExpedienteOperadorController extends Controller
             })
             ->get(['IdEmpleado', 'CURP', 'Nombre']);
 
-        $idsViejosConDocs = TblAdjunto::where('Tabla', config('expediente_docs.tabla_bd'))
+        $adjuntosViejos = TblAdjunto::where('Tabla', config('expediente_docs.tabla_bd'))
             ->whereIn('IdRegTab', $empleadosViejos->pluck('IdEmpleado'))
             ->where('Estatus', '!=', 'ELIMINADO')
-            ->pluck('IdRegTab')
-            ->unique();
+            ->get(['IdRegTab', 'Comentarios'])
+            ->groupBy('IdRegTab');
 
-        $empleadosConDocsPorCurp   = $empleadosViejos->whereIn('IdEmpleado', $idsViejosConDocs)->pluck('CURP')->filter()->flip();
-        $empleadosConDocsPorNombre = $empleadosViejos->whereIn('IdEmpleado', $idsViejosConDocs)->pluck('Nombre')->filter()->flip();
+        $nombresCatalogo = collect(config('expediente_docs.documentos'))->map(fn($d) => $d['nombre'] ?? null);
+
+        // Mapa CURP/Nombre → nombres de los documentos ya capturados en el sistema anterior
+        $docsAnteriorPorCurp   = [];
+        $docsAnteriorPorNombre = [];
+        foreach ($empleadosViejos as $empViejo) {
+            $docsEmp = $adjuntosViejos->get($empViejo->IdEmpleado, collect());
+            if ($docsEmp->isEmpty()) continue;
+
+            $nombresDocs = $docsEmp->map(fn($d) => $d->tipoDocumento())
+                ->unique()->filter()
+                ->map(fn($t) => $nombresCatalogo[$t] ?? $t)
+                ->values();
+
+            if ($empViejo->CURP)   $docsAnteriorPorCurp[$empViejo->CURP]     = $nombresDocs;
+            if ($empViejo->Nombre) $docsAnteriorPorNombre[$empViejo->Nombre] = $nombresDocs;
+        }
 
         // Construye mapa: IdOper → ['count' => N, 'pct' => NN, ...]  (solo página actual)
         $completitud = [];
@@ -91,6 +106,8 @@ class ExpedienteOperadorController extends Controller
             $enviados = $docs->filter(fn($d) => !is_null($d->EnvioDrive)
                 && $clavesObligatorias->contains($d->tipoDocumento()))->count();
 
+            $docsAnterior = $docsAnteriorPorCurp[$op->CURP] ?? $docsAnteriorPorNombre[$op->Operador] ?? null;
+
             $completitud[$op->IdOper] = [
                 'count'             => $count,
                 'total'             => $totalDocs,
@@ -98,7 +115,8 @@ class ExpedienteOperadorController extends Controller
                 'completo'          => $completo,
                 'enviados'          => $enviados,
                 'envio'             => $idsEnvio->contains($op->IdOper),
-                'duplicado_anterior'=> $empleadosConDocsPorCurp->has($op->CURP) || $empleadosConDocsPorNombre->has($op->Operador),
+                'duplicado_anterior'=> !is_null($docsAnterior),
+                'docs_anterior'     => $docsAnterior,
             ];
         }
 
@@ -666,17 +684,24 @@ class ExpedienteOperadorController extends Controller
             return null;
         }
 
-        $totalDocsViejos = TblAdjunto::delEmpleado($empleado->IdEmpleado)->activo()->count();
+        $docsViejos = TblAdjunto::delEmpleado($empleado->IdEmpleado)->activo()->get();
 
-        if ($totalDocsViejos === 0) {
+        if ($docsViejos->isEmpty()) {
             return null;
         }
+
+        $catalogo = config('expediente_docs.documentos');
+        $nombresDocs = $docsViejos->map(fn($d) => $d->tipoDocumento())
+            ->unique()->filter()
+            ->map(fn($t) => $catalogo[$t]['nombre'] ?? $t)
+            ->values();
 
         return [
             'IdEmpleado' => $empleado->IdEmpleado,
             'Nombre'     => $empleado->Nombre,
             'CURP'       => $empleado->CURP,
-            'totalDocs'  => $totalDocsViejos,
+            'totalDocs'  => $docsViejos->count(),
+            'docs'       => $nombresDocs,
         ];
     }
 

@@ -34,10 +34,10 @@
 @section('content')
 
     @if ($duplicadoAnterior)
-        <div class="alert alert-warning">
-            <i class="fas fa-exclamation-triangle mr-1"></i>
-            Este operador (mismo nombre/CURP) ya tiene <strong>{{ $duplicadoAnterior['totalDocs'] }}</strong>
-            documento(s) en el sistema anterior (catempleados, ID {{ $duplicadoAnterior['IdEmpleado'] }}).
+        <div class="alert alert-info">
+            <i class="fas fa-check-double mr-1"></i>
+            <strong>Capturado en sistema anterior</strong> (mismo nombre/CURP, ID {{ $duplicadoAnterior['IdEmpleado'] }}):
+            {{ $duplicadoAnterior['docs']->implode(', ') }}.
             Verifica antes de volver a subir o enviar a Drive para no duplicar el expediente.
         </div>
     @endif

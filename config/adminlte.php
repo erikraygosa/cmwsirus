@@ -363,7 +363,7 @@ return [
                     'icon' => 'fas fa-fw fa-users',
                 ],
                 [
-                    'text' => 'Operadores (catoperadores)',
+                    'text' => 'Operadores ControlBol',
                     'url'  => 'expedientes-operadores',
                     'icon' => 'fas fa-fw fa-id-badge',
                 ],
