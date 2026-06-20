@@ -3,8 +3,11 @@
 namespace App\Http\Controllers;
 
 use App\Models\CatEmpleado;
+use App\Models\CatOperador;
 use App\Models\TblAdjunto;
 use Illuminate\Http\Request;
+use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use ZipArchive;
@@ -15,17 +18,26 @@ class ExpedienteController extends Controller
     private string $bucket;
     private string $disco;
 
+    private string $tablaOperador;
+    private string $bucketOperador;
+
     public function __construct()
     {
         $this->tabla  = config('expediente_docs.tabla_bd');   // 'EMPLEADO'
         $this->bucket = config('expediente_docs.bucket');     // 'expedientes'
         $this->disco  = config('expediente_docs.disco');      // 'public'
+
+        $this->tablaOperador  = config('expediente_docs.tabla_bd_operador');  // 'OPERADOR'
+        $this->bucketOperador = config('expediente_docs.bucket_operador');    // 'expedientes_operadores'
     }
 
     /*
     |--------------------------------------------------------------------------
-    | INDEX — Lista de operadores activos con % de completitud
+    | INDEX — Lista UNIFICADA: catempleados (default) + catoperadores
     |--------------------------------------------------------------------------
+    | catempleados manda. Un operador de catoperadores solo se agrega a la
+    | lista si su CURP o Nombre NO coincide con nadie ya en catempleados —
+    | así no se duplica el mismo operador en dos filas.
     */
     public function index(Request $request)
     {
@@ -33,45 +45,56 @@ class ExpedienteController extends Controller
         $soloDrive = $request->boolean('drive');
         $totalDocs = collect(config('expediente_docs.documentos'))->filter(fn($d) => $d['obligatorio'] ?? true)->count();
 
-        // Operadores activos (status = A)
-        $empleados = CatEmpleado::when($busqueda, function ($q) use ($busqueda) {
-                $q->where(function ($sub) use ($busqueda) {
-                    $sub->where('Nombre', 'like', "%{$busqueda}%")
-                        ->orWhere('CURP', 'like', "%{$busqueda}%");
-                });
-            })
-            ->when($soloDrive, function ($q) {
-                $q->where('envio', 1);
-            })
-            ->orderBy('Nombre')
-            ->paginate(25)
-            ->withQueryString();
+        $todos = $this->unificados();
 
-        // Para cada empleado calcula cuántos tipos de doc tiene subidos
-        $adjuntosPorEmpleado = TblAdjunto::where('Tabla', $this->tabla)
-            ->whereIn('IdRegTab', $empleados->pluck('IdEmpleado'))
-            ->where('Estatus', '!=', 'ELIMINADO')
-            ->get()
-            ->groupBy('IdRegTab');
+        $filtrados = $todos
+            ->when($busqueda, function (Collection $c) use ($busqueda) {
+                $b = mb_strtolower($busqueda);
+                return $c->filter(fn($r) => str_contains(mb_strtolower($r->Nombre ?? ''), $b)
+                    || str_contains(mb_strtolower($r->CURP ?? ''), $b));
+            })
+            ->when($soloDrive, fn(Collection $c) => $c->filter(fn($r) => $r->envio))
+            ->sortBy(fn($r) => $r->Nombre)
+            ->values();
+
+        $perPage = 25;
+        $page    = (int) ($request->input('page', 1));
+        $page    = max(1, $page);
+
+        $empleados = new LengthAwarePaginator(
+            $filtrados->forPage($page, $perPage)->values(),
+            $filtrados->count(),
+            $perPage,
+            $page,
+            ['path' => $request->url(), 'query' => $request->query()]
+        );
 
         $clavesObligatorias = collect(config('expediente_docs.documentos'))
             ->filter(fn($d) => $d['obligatorio'] ?? true)->keys();
 
-        // Construye mapa: IdEmpleado → ['count' => N, 'pct' => NN]  (solo página actual)
-        $completitud = [];
-        foreach ($empleados as $emp) {
-            $docs      = $adjuntosPorEmpleado->get($emp->IdEmpleado, collect());
-            $tipos     = $docs->map(fn($d) => $d->tipoDocumento())->unique()->filter()
-                             ->intersect($clavesObligatorias)->values();
-            $count     = $tipos->count();
-            $pct       = $totalDocs > 0 ? (int) round($count / $totalDocs * 100) : 0;
-            $completo  = $count >= $totalDocs;
+        $idsEmpPagina = $empleados->getCollection()->where('origen', 'EMPLEADO')->pluck('id');
+        $idsOpPagina  = $empleados->getCollection()->where('origen', 'OPERADOR')->pluck('id');
 
-            // Cuántos docs obligatorios ya fueron enviados al Drive
+        $adjuntosEmp = TblAdjunto::where('Tabla', $this->tabla)
+            ->whereIn('IdRegTab', $idsEmpPagina)->where('Estatus', '!=', 'ELIMINADO')->get()->groupBy('IdRegTab');
+        $adjuntosOp = TblAdjunto::where('Tabla', $this->tablaOperador)
+            ->whereIn('IdRegTab', $idsOpPagina)->where('Estatus', '!=', 'ELIMINADO')->get()->groupBy('IdRegTab');
+
+        $completitud = [];
+        foreach ($empleados as $row) {
+            $docs  = $row->origen === 'EMPLEADO'
+                ? $adjuntosEmp->get($row->id, collect())
+                : $adjuntosOp->get($row->id, collect());
+
+            $tipos    = $docs->map(fn($d) => $d->tipoDocumento())->unique()->filter()
+                             ->intersect($clavesObligatorias)->values();
+            $count    = $tipos->count();
+            $pct      = $totalDocs > 0 ? (int) round($count / $totalDocs * 100) : 0;
+            $completo = $count >= $totalDocs;
             $enviados = $docs->filter(fn($d) => !is_null($d->EnvioDrive)
                 && $clavesObligatorias->contains($d->tipoDocumento()))->count();
 
-            $completitud[$emp->IdEmpleado] = [
+            $completitud[$row->origen . '_' . $row->id] = [
                 'count'    => $count,
                 'total'    => $totalDocs,
                 'pct'      => $pct,
@@ -80,34 +103,28 @@ class ExpedienteController extends Controller
             ];
         }
 
-        // ── Stats globales: todos los operadores activos (no solo la página) ──
-        $todosIds = CatEmpleado::where('Estatus', 'A')->pluck('IdEmpleado');
+        // ── Stats globales sobre todo el conjunto unificado (no solo la página) ──
+        $adjuntosGlobalEmp = TblAdjunto::where('Tabla', $this->tabla)
+            ->whereIn('IdRegTab', $todos->where('origen', 'EMPLEADO')->pluck('id'))
+            ->where('Estatus', '!=', 'ELIMINADO')->get()->groupBy('IdRegTab');
+        $adjuntosGlobalOp = TblAdjunto::where('Tabla', $this->tablaOperador)
+            ->whereIn('IdRegTab', $todos->where('origen', 'OPERADOR')->pluck('id'))
+            ->where('Estatus', '!=', 'ELIMINADO')->get()->groupBy('IdRegTab');
 
-        $todosAdjGlobal = TblAdjunto::where('Tabla', $this->tabla)
-            ->whereIn('IdRegTab', $todosIds)
-            ->where('Estatus', '!=', 'ELIMINADO')
-            ->get(['IdRegTab', 'Comentarios', 'EnvioDrive'])
-            ->groupBy('IdRegTab');
-
-        $completosGlobal = 0;
-        foreach ($todosIds as $idEmp) {
-            $tipos = $todosAdjGlobal->get($idEmp, collect())
-                ->map(fn($d) => $d->tipoDocumento())
-                ->unique()->filter()
-                ->intersect($clavesObligatorias);
-            if ($tipos->count() >= $totalDocs) {
-                $completosGlobal++;
-            }
+        $completosGlobal = $filtradosVacio = 0;
+        foreach ($todos as $row) {
+            $docs  = $row->origen === 'EMPLEADO'
+                ? $adjuntosGlobalEmp->get($row->id, collect())
+                : $adjuntosGlobalOp->get($row->id, collect());
+            $tipos = $docs->map(fn($d) => $d->tipoDocumento())->unique()->filter()->intersect($clavesObligatorias);
+            if ($tipos->count() >= $totalDocs) $completosGlobal++;
         }
 
-        // Cuántos empleados completos tienen el flag envio=1
-        $marcadosParaDrive = CatEmpleado::where('Estatus', 'A')->where('envio', 1)->count();
-
         $statsGlobales = [
-            'completos'        => $completosGlobal,
-            'incompletos'      => $todosIds->count() - $completosGlobal,
-            'total'            => $todosIds->count(),
-            'marcadosParaDrive'=> $marcadosParaDrive,
+            'completos'         => $completosGlobal,
+            'incompletos'       => $todos->count() - $completosGlobal,
+            'total'             => $todos->count(),
+            'marcadosParaDrive' => $todos->filter(fn($r) => $r->envio)->count(),
         ];
 
         return view('expedientes.index', compact('empleados', 'completitud', 'busqueda', 'soloDrive', 'totalDocs', 'statsGlobales'));
@@ -115,79 +132,120 @@ class ExpedienteController extends Controller
 
     /*
     |--------------------------------------------------------------------------
-    | SHOW — Expediente de un operador (todos sus documentos)
+    | SHOW — Expediente de un operador del catálogo EMPLEADO (catempleados)
     |--------------------------------------------------------------------------
     */
     public function show(int $id)
     {
-        $empleado  = CatEmpleado::findOrFail($id);
-        $catalogo  = config('expediente_docs.documentos');
-
-        // Traer todos los adjuntos activos del empleado
-        $adjuntos  = TblAdjunto::delEmpleado($id)->activo()->orderByDesc('Creado')->get();
-
-        // Indexar por tipo para acceso rápido en la vista
-        $porTipo   = [];
-        foreach ($adjuntos as $adj) {
-            $tipo = $adj->tipoDocumento();
-            if ($tipo && !isset($porTipo[$tipo])) {
-                $porTipo[$tipo] = $adj;  // el más reciente por tipo
-            }
-        }
-
-        $obligatorios  = collect($catalogo)->filter(fn($d) => $d['obligatorio'] ?? true)->keys();
-        $totalDocs     = $obligatorios->count();
-        $subidos       = collect(array_keys($porTipo))->intersect($obligatorios)->count();
-        $subidosTotal  = collect(array_keys($porTipo))->intersect(array_keys($catalogo))->count();
-        $pct       = $totalDocs > 0 ? (int) round($subidos / $totalDocs * 100) : 0;
-        $completo  = $subidos >= $totalDocs;
-
-        return view('expedientes.show', compact(
-            'empleado', 'catalogo', 'porTipo', 'totalDocs', 'subidos', 'subidosTotal', 'pct', 'completo'
-        ));
+        $empleado = CatEmpleado::findOrFail($id);
+        return $this->mostrarExpediente($empleado, 'EMPLEADO', $this->tabla, 'expedientes.show');
     }
 
     /*
     |--------------------------------------------------------------------------
-    | STORE — Subir / reemplazar un documento
+    | SHOW OPERADOR — Expediente de un registro proveniente de catoperadores
+    |--------------------------------------------------------------------------
+    */
+    public function showOperador(int $id)
+    {
+        $operador = CatOperador::findOrFail($id);
+        return $this->mostrarExpediente($operador, 'OPERADOR', $this->tablaOperador, 'expedientes.show');
+    }
+
+    private function mostrarExpediente($registro, string $origen, string $tablaAdj, string $vista)
+    {
+        $esOperador = $origen === 'OPERADOR';
+        $id         = $esOperador ? $registro->IdOper : $registro->IdEmpleado;
+        $nombre     = $esOperador ? $registro->Operador : $registro->Nombre;
+
+        // catoperadores guarda la vigencia de licencia en 'VencimientoLic', no 'FechaVL'
+        $catalogo = collect(config('expediente_docs.documentos'))->map(function ($doc) use ($esOperador) {
+            if ($esOperador && ($doc['campo_vigencia'] ?? null) === 'FechaVL') {
+                $doc['campo_vigencia'] = 'VencimientoLic';
+            }
+            return $doc;
+        })->all();
+
+        $adjuntos = TblAdjunto::deTabla($tablaAdj, $id)->activo()->orderByDesc('Creado')->get();
+
+        $porTipo = [];
+        foreach ($adjuntos as $adj) {
+            $tipo = $adj->tipoDocumento();
+            if ($tipo && !isset($porTipo[$tipo])) {
+                $porTipo[$tipo] = $adj;
+            }
+        }
+
+        $obligatorios = collect($catalogo)->filter(fn($d) => $d['obligatorio'] ?? true)->keys();
+        $totalDocs    = $obligatorios->count();
+        $subidos      = collect(array_keys($porTipo))->intersect($obligatorios)->count();
+        $subidosTotal = collect(array_keys($porTipo))->intersect(array_keys($catalogo))->count();
+        $pct          = $totalDocs > 0 ? (int) round($subidos / $totalDocs * 100) : 0;
+        $completo     = $subidos >= $totalDocs;
+
+        return view($vista, [
+            'empleado'     => $registro,
+            'origen'       => $origen,
+            'id'           => $id,
+            'nombreMostrar'=> $nombre,
+            'envio'        => (bool) $registro->envio,
+            'catalogo'     => $catalogo,
+            'porTipo'      => $porTipo,
+            'totalDocs'    => $totalDocs,
+            'subidos'      => $subidos,
+            'subidosTotal' => $subidosTotal,
+            'pct'          => $pct,
+            'completo'     => $completo,
+        ]);
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | STORE — Subir / reemplazar un documento (EMPLEADO)
     |--------------------------------------------------------------------------
     */
     public function store(Request $request, int $id)
     {
-        $maxMb  = config('expediente_docs.max_mb', 10);
-        $tipos  = array_keys(config('expediente_docs.documentos'));
+        CatEmpleado::findOrFail($id);
+        return $this->guardarDocumento($request, $id, $this->tabla, $this->bucket);
+    }
+
+    public function storeOperador(Request $request, int $id)
+    {
+        CatOperador::findOrFail($id);
+        return $this->guardarDocumento($request, $id, $this->tablaOperador, $this->bucketOperador);
+    }
+
+    private function guardarDocumento(Request $request, int $id, string $tablaAdj, string $bucket)
+    {
+        $maxMb = config('expediente_docs.max_mb', 10);
+        $tipos = array_keys(config('expediente_docs.documentos'));
 
         $request->validate([
             'tipo'    => ['required', 'in:' . implode(',', $tipos)],
-            'archivo' => ['required', 'file', "max:{$maxMb}024"],   // max en KB
+            'archivo' => ['required', 'file', "max:{$maxMb}024"],
         ]);
 
-        $empleado = CatEmpleado::findOrFail($id);
-        $tipo     = $request->tipo;
-        $archivo  = $request->file('archivo');
+        $tipo    = $request->tipo;
+        $archivo = $request->file('archivo');
 
-        // Nombre de archivo seguro: TIPO_IdEmpleado_timestamp.ext
         $ext          = $archivo->getClientOriginalExtension();
         $nombreGuarda = strtoupper($tipo) . "_{$id}_" . time() . '.' . $ext;
 
-        // Ruta relativa dentro del disco: expedientes/042/INE_042_1700000000.jpg
-        $carpeta      = $this->bucket . DIRECTORY_SEPARATOR . $id;
+        $carpeta      = $bucket . DIRECTORY_SEPARATOR . $id;
         $rutaRelativa = $carpeta . DIRECTORY_SEPARATOR . $nombreGuarda;
 
-        // Guardar físicamente
         $archivo->storeAs($carpeta, $nombreGuarda, $this->disco);
 
-        // Marcar como REEMPLAZADO cualquier doc anterior del mismo tipo
-        TblAdjunto::delEmpleado($id)
+        TblAdjunto::deTabla($tablaAdj, $id)
             ->porTipo($tipo)
             ->activo()
             ->update(['Estatus' => 'REEMPLAZADO', 'updated_at' => now()]);
 
-        // Insertar nuevo registro en tbladjuntos
         TblAdjunto::create([
-            'Tabla'            => $this->tabla,
+            'Tabla'            => $tablaAdj,
             'IdRegTab'         => $id,
-            'Bucket'           => $this->bucket,
+            'Bucket'           => $bucket,
             'FullFileName'     => $rutaRelativa,
             'OriginalFileName' => $archivo->getClientOriginalName(),
             'Peso'             => $archivo->getSize(),
@@ -204,7 +262,7 @@ class ExpedienteController extends Controller
 
     /*
     |--------------------------------------------------------------------------
-    | DESTROY — Eliminar lógico de un documento
+    | DESTROY — Eliminar lógico de un documento (compartido EMPLEADO/OPERADOR)
     |--------------------------------------------------------------------------
     */
     public function destroy(int $idAdj)
@@ -219,25 +277,33 @@ class ExpedienteController extends Controller
     |--------------------------------------------------------------------------
     | DOWNLOAD ZIP — Expediente de un operador (docs seleccionados)
     |--------------------------------------------------------------------------
-    | Query param: ?tipos[]=INE_FRENTE&tipos[]=LICENCIA_FRENTE   (opcional)
-    | Sin parámetro → incluye todos los marcados con zip=true en el catálogo.
     */
     public function downloadZip(Request $request, int $id)
     {
         $empleado = CatEmpleado::findOrFail($id);
+        return $this->generarZip($request, $id, $empleado->Nombre, $this->tabla);
+    }
+
+    public function downloadZipOperador(Request $request, int $id)
+    {
+        $operador = CatOperador::findOrFail($id);
+        return $this->generarZip($request, $id, $operador->Operador, $this->tablaOperador);
+    }
+
+    private function generarZip(Request $request, int $id, string $nombre, string $tablaAdj)
+    {
         $catalogo = config('expediente_docs.documentos');
-        $adjuntos = TblAdjunto::delEmpleado($id)->activo()->get();
+        $adjuntos = TblAdjunto::deTabla($tablaAdj, $id)->activo()->get();
 
         if ($adjuntos->isEmpty()) {
             return back()->with('error', 'El operador no tiene documentos subidos aún.');
         }
 
-        // Tipos a incluir: los del request, o por defecto los que tienen zip=true
         $tiposPermitidos = $request->has('tipos')
             ? collect($request->input('tipos', []))->filter(fn($t) => isset($catalogo[$t]))->values()
             : collect($catalogo)->filter(fn($d) => $d['zip'] ?? true)->keys();
 
-        $nombreLimpio = Str::slug($empleado->Nombre, '_');
+        $nombreLimpio = Str::slug($nombre, '_');
         $zipNombre    = "Expediente_{$nombreLimpio}_{$id}.zip";
         $zipRuta      = storage_path("app/temp/{$zipNombre}");
 
@@ -270,39 +336,30 @@ class ExpedienteController extends Controller
 
     /*
     |--------------------------------------------------------------------------
-    | EXPORT MASIVO ZIP — Solo operadores con expediente COMPLETO
+    | EXPORT MASIVO ZIP — Solo operadores con expediente COMPLETO (unificado)
     |--------------------------------------------------------------------------
-    | GET /expedientes/masivo/zip?tipos[]=INE_FRENTE&tipos[]=CURP ...
-    | Sin parámetro → todos los marcados con drive=true.
     */
     public function exportMasivo(Request $request)
     {
-        $catalogo    = config('expediente_docs.documentos');
-        $totalDocs   = collect($catalogo)->filter(fn($d) => $d['obligatorio'] ?? true)->count();
+        $catalogo  = config('expediente_docs.documentos');
+        $totalDocs = collect($catalogo)->filter(fn($d) => $d['obligatorio'] ?? true)->count();
 
-        // Tipos a incluir en el ZIP masivo
         $tiposPermitidos = $request->has('tipos')
             ? collect($request->input('tipos', []))->filter(fn($t) => isset($catalogo[$t]))->values()
             : collect($catalogo)->filter(fn($d) => $d['drive'] ?? true)->keys();
 
-        // Traer todos los adjuntos activos del módulo
-        $todosAdjuntos = TblAdjunto::where('Tabla', $this->tabla)
-            ->activo()
-            ->get()
-            ->groupBy('IdRegTab');
+        $todos = $this->unificados();
 
-        // Filtrar solo los empleados con expediente completo
-        $empleadosCompletos = CatEmpleado::where('Estatus', 'A')
-            ->get()
-            ->filter(function ($emp) use ($todosAdjuntos, $catalogo, $totalDocs) {
-                $docs  = $todosAdjuntos->get($emp->IdEmpleado, collect());
-                $tipos = $docs->map(fn($d) => $d->tipoDocumento())
-                              ->unique()->filter()
-                              ->intersect(array_keys($catalogo));
-                return $tipos->count() >= $totalDocs;
-            });
+        $adjuntosEmp = TblAdjunto::where('Tabla', $this->tabla)->activo()->get()->groupBy('IdRegTab');
+        $adjuntosOp  = TblAdjunto::where('Tabla', $this->tablaOperador)->activo()->get()->groupBy('IdRegTab');
 
-        if ($empleadosCompletos->isEmpty()) {
+        $completos = $todos->filter(function ($row) use ($adjuntosEmp, $adjuntosOp, $catalogo, $totalDocs) {
+            $docs  = $row->origen === 'EMPLEADO' ? $adjuntosEmp->get($row->id, collect()) : $adjuntosOp->get($row->id, collect());
+            $tipos = $docs->map(fn($d) => $d->tipoDocumento())->unique()->filter()->intersect(array_keys($catalogo));
+            return $tipos->count() >= $totalDocs;
+        });
+
+        if ($completos->isEmpty()) {
             return back()->with('error', 'No hay operadores con expediente completo para exportar.');
         }
 
@@ -318,11 +375,11 @@ class ExpedienteController extends Controller
             return back()->with('error', 'No se pudo crear el archivo ZIP masivo.');
         }
 
-        foreach ($empleadosCompletos as $emp) {
-            $nombreLimpio = Str::slug($emp->Nombre, '_');
-            $adjuntos     = $todosAdjuntos->get($emp->IdEmpleado, collect());
+        foreach ($completos as $row) {
+            $nombreLimpio = Str::slug($row->Nombre, '_');
+            $docs         = $row->origen === 'EMPLEADO' ? $adjuntosEmp->get($row->id, collect()) : $adjuntosOp->get($row->id, collect());
 
-            foreach ($adjuntos as $adj) {
+            foreach ($docs as $adj) {
                 $tipo = $adj->tipoDocumento();
                 if (!$tiposPermitidos->contains($tipo)) continue;
 
@@ -331,8 +388,7 @@ class ExpedienteController extends Controller
 
                 $nombreDoc   = $catalogo[$tipo]['nombre'] ?? $tipo;
                 $ext         = pathinfo($adj->OriginalFileName, PATHINFO_EXTENSION);
-                // Carpeta por operador dentro del ZIP
-                $nombreEnZip = "{$nombreLimpio}_{$emp->IdEmpleado}/{$nombreDoc}.{$ext}";
+                $nombreEnZip = "{$nombreLimpio}_{$row->id}/{$nombreDoc}.{$ext}";
                 $zip->addFile($rutaFisica, $nombreEnZip);
             }
         }
@@ -346,7 +402,8 @@ class ExpedienteController extends Controller
     |--------------------------------------------------------------------------
     | SYNC DRIVE — Lanza rclone en background y retorna sync_id para polling
     |--------------------------------------------------------------------------
-    | Flujo asíncrono (soporta 70+ operadores sin timeout):
+    | Flujo asíncrono sobre el conjunto UNIFICADO (catempleados + catoperadores
+    | no duplicados). Soporta 70+ operadores sin timeout:
     |   1. Copia archivos a carpeta temporal (PHP, rápido)
     |   2. Escribe script .bat/.sh con el comando rclone
     |   3. Lanza el script en background (no bloquea el request)
@@ -364,22 +421,20 @@ class ExpedienteController extends Controller
         $carpetaDrive = trim($request->carpeta_drive);
         $siglas       = strtoupper(trim($request->siglas));
 
-        // ── 1. Adjuntos y empleados ───────────────────────────────
-        $todosAdjuntos = TblAdjunto::where('Tabla', $this->tabla)
-            ->activo()->get()->groupBy('IdRegTab');
+        $adjuntosEmp = TblAdjunto::where('Tabla', $this->tabla)->activo()->get()->groupBy('IdRegTab');
+        $adjuntosOp  = TblAdjunto::where('Tabla', $this->tablaOperador)->activo()->get()->groupBy('IdRegTab');
 
-        $empleadosConDocs = CatEmpleado::where('Estatus', 'A')
-            ->where('envio', 1)->get()
-            ->filter(fn($emp) => $todosAdjuntos->has($emp->IdEmpleado));
+        $marcadosConDocs = $this->unificados()
+            ->filter(fn($r) => $r->envio)
+            ->filter(fn($r) => ($r->origen === 'EMPLEADO' ? $adjuntosEmp : $adjuntosOp)->has($r->id));
 
-        if ($empleadosConDocs->isEmpty()) {
+        if ($marcadosConDocs->isEmpty()) {
             return response()->json(
                 ['error' => 'Ningún operador marcado para Drive tiene documentos almacenados.'], 422
             );
         }
 
-        // ── 1b. Validar que todos tengan CURP registrado ──────────
-        $sinCurp = $empleadosConDocs->filter(fn($emp) => empty(trim((string) $emp->CURP)));
+        $sinCurp = $marcadosConDocs->filter(fn($r) => empty(trim((string) $r->CURP)));
 
         if ($sinCurp->isNotEmpty()) {
             $nombres = $sinCurp->pluck('Nombre')->implode(', ');
@@ -388,22 +443,22 @@ class ExpedienteController extends Controller
             ], 422);
         }
 
-        // ── 2. Directorio de trabajo para este job ────────────────
         $syncId  = 'drive_' . uniqid('', true);
         $syncDir = storage_path('app/temp/' . $syncId);
         $tmpBase = $syncDir . DIRECTORY_SEPARATOR . 'files';
         mkdir($tmpBase, 0755, true);
 
-        // ── 3. Copiar archivos pendientes a temp ──────────────────
         $totalArchivos = 0;
         $idsEnviados   = [];
 
-        foreach ($empleadosConDocs as $emp) {
-            $curp      = $emp->CURP ?? $emp->IdEmpleado;
+        foreach ($marcadosConDocs as $row) {
+            $curp      = $row->CURP ?? $row->id;
             $carpetaOp = $tmpBase . DIRECTORY_SEPARATOR . "{$curp}_{$siglas}";
             if (!is_dir($carpetaOp)) mkdir($carpetaOp, 0755, true);
 
-            foreach ($todosAdjuntos->get($emp->IdEmpleado, collect()) as $adj) {
+            $docs = $row->origen === 'EMPLEADO' ? $adjuntosEmp->get($row->id, collect()) : $adjuntosOp->get($row->id, collect());
+
+            foreach ($docs as $adj) {
                 $tipo = $adj->tipoDocumento();
                 if (!$tipo || !is_null($adj->EnvioDrive)) continue;
 
@@ -425,19 +480,14 @@ class ExpedienteController extends Controller
             );
         }
 
-        // ── 4. Guardar estado del job ─────────────────────────────
-        $logFile      = $syncDir . DIRECTORY_SEPARATOR . 'rclone.log';
-        $exitCodeFile = $syncDir . DIRECTORY_SEPARATOR . 'exitcode.txt';
-
         file_put_contents($syncDir . DIRECTORY_SEPARATOR . 'state.json', json_encode([
             'ids_enviados'     => $idsEnviados,
             'total_archivos'   => $totalArchivos,
-            'operadores_count' => $empleadosConDocs->count(),
+            'operadores_count' => $marcadosConDocs->count(),
             'carpeta_drive'    => $carpetaDrive,
             'sync_dir'         => $syncDir,
         ]));
 
-        // ── 5. Construir comando rclone ───────────────────────────
         $rcloneBin     = env('RCLONE_BIN', 'rclone');
         $rcloneConf    = env('RCLONE_CONF');
         $remoteNombre  = env('RCLONE_REMOTE', 'gdrive_cliente');
@@ -447,8 +497,9 @@ class ExpedienteController extends Controller
         $confFlag   = $rcloneConf    ? '--config '              . escapeshellarg($rcloneConf)    : '';
         $folderFlag = $driveFolderId ? '--drive-root-folder-id ' . escapeshellarg($driveFolderId) : '';
 
-        // ── 6. Lanzar en background según SO ─────────────────────
-        $isWindows = strtoupper(substr(PHP_OS, 0, 3)) === 'WIN';
+        $logFile      = $syncDir . DIRECTORY_SEPARATOR . 'rclone.log';
+        $exitCodeFile = $syncDir . DIRECTORY_SEPARATOR . 'exitcode.txt';
+        $isWindows    = strtoupper(substr(PHP_OS, 0, 3)) === 'WIN';
 
         if ($isWindows) {
             $bat  = "@echo off\r\n";
@@ -484,7 +535,7 @@ class ExpedienteController extends Controller
         return response()->json([
             'sync_id'    => $syncId,
             'total'      => $totalArchivos,
-            'operadores' => $empleadosConDocs->count(),
+            'operadores' => $marcadosConDocs->count(),
         ]);
     }
 
@@ -508,7 +559,6 @@ class ExpedienteController extends Controller
             return response()->json(['status' => 'error', 'message' => 'Job no encontrado.'], 404);
         }
 
-        // Aún corriendo
         if (!file_exists($exitCodeFile)) {
             return response()->json(['status' => 'running']);
         }
@@ -539,14 +589,14 @@ class ExpedienteController extends Controller
 
     /*
     |--------------------------------------------------------------------------
-    | UPDATE VIGENCIA — Guarda fecha de vencimiento de licencia (FechaVL)
+    | UPDATE VIGENCIA — Guarda fecha de vencimiento de licencia
     |--------------------------------------------------------------------------
     */
     public function updateVigencia(Request $request, int $id)
     {
         $request->validate([
-            'campo'  => ['required', 'string', 'in:FechaVL'],
-            'fecha'  => ['nullable', 'date'],
+            'campo' => ['required', 'string', 'in:FechaVL'],
+            'fecha' => ['nullable', 'date'],
         ]);
 
         $empleado = CatEmpleado::findOrFail($id);
@@ -555,9 +605,22 @@ class ExpedienteController extends Controller
         return back()->with('success', 'Fecha de vencimiento actualizada.');
     }
 
+    public function updateVigenciaOperador(Request $request, int $id)
+    {
+        $request->validate([
+            'campo' => ['required', 'string', 'in:VencimientoLic'],
+            'fecha' => ['nullable', 'date'],
+        ]);
+
+        $operador = CatOperador::findOrFail($id);
+        $operador->update([$request->campo => $request->fecha ?: null]);
+
+        return back()->with('success', 'Fecha de vencimiento actualizada.');
+    }
+
     /*
     |--------------------------------------------------------------------------
-    | TOGGLE ENVIO — Marca / desmarca empleado para envío a Drive
+    | TOGGLE ENVIO — Marca / desmarca operador para envío a Drive
     |--------------------------------------------------------------------------
     */
     public function toggleEnvio(Request $request, int $id)
@@ -567,6 +630,18 @@ class ExpedienteController extends Controller
 
         return back()->with('success',
             $empleado->envio
+                ? 'Operador marcado para envío a Drive.'
+                : 'Operador desmarcado del envío a Drive.'
+        );
+    }
+
+    public function toggleEnvioOperador(Request $request, int $id)
+    {
+        $operador = CatOperador::findOrFail($id);
+        $operador->update(['envio' => $request->boolean('envio') ? 1 : 0]);
+
+        return back()->with('success',
+            $operador->envio
                 ? 'Operador marcado para envío a Drive.'
                 : 'Operador desmarcado del envío a Drive.'
         );
@@ -592,6 +667,21 @@ class ExpedienteController extends Controller
         return back()->with('success', 'CURP actualizado correctamente.');
     }
 
+    public function updateCurpOperador(Request $request, int $id)
+    {
+        $request->validate([
+            'curp' => ['required', 'string', 'size:18', 'regex:/^[A-Z]{4}[0-9]{6}[HM][A-Z]{5}[0-9A-Z]{2}$/i'],
+        ], [
+            'curp.size'  => 'El CURP debe tener exactamente 18 caracteres.',
+            'curp.regex' => 'El formato del CURP no es válido.',
+        ]);
+
+        $operador = CatOperador::findOrFail($id);
+        $operador->update(['CURP' => strtoupper(trim($request->curp))]);
+
+        return back()->with('success', 'CURP actualizado correctamente.');
+    }
+
     /*
     |--------------------------------------------------------------------------
     | UPDATE NOMBRE — Corrige el nombre del operador
@@ -611,6 +701,20 @@ class ExpedienteController extends Controller
         return back()->with('success', 'Nombre actualizado correctamente.');
     }
 
+    public function updateNombreOperador(Request $request, int $id)
+    {
+        $request->validate([
+            'nombre' => ['required', 'string', 'min:3', 'max:200'],
+        ], [
+            'nombre.min' => 'El nombre debe tener al menos 3 caracteres.',
+        ]);
+
+        $operador = CatOperador::findOrFail($id);
+        $operador->update(['Operador' => strtoupper(trim($request->nombre))]);
+
+        return back()->with('success', 'Nombre actualizado correctamente.');
+    }
+
     /*
     |--------------------------------------------------------------------------
     | DAR DE BAJA — Cambia Estatus a "B" (desaparece de la lista activa)
@@ -624,6 +728,53 @@ class ExpedienteController extends Controller
 
         return redirect()->route('expedientes.index')
             ->with('success', "Operador \"{$nombre}\" dado de baja correctamente.");
+    }
+
+    public function darDeBajaOperador(int $id)
+    {
+        $operador = CatOperador::findOrFail($id);
+        $nombre   = $operador->Operador;
+        $operador->update(['Estatus' => 'B']);
+
+        return redirect()->route('expedientes.index')
+            ->with('success', "Operador \"{$nombre}\" dado de baja correctamente.");
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Helpers — conjunto unificado catempleados + catoperadores (sin duplicar)
+    |--------------------------------------------------------------------------
+    */
+    private function unificados(): Collection
+    {
+        $empleados = CatEmpleado::all()->map(fn($e) => (object) [
+            'origen'  => 'EMPLEADO',
+            'id'      => $e->IdEmpleado,
+            'Nombre'  => $e->Nombre,
+            'CURP'    => $e->CURP,
+            'Unidad'  => $e->Unidad,
+            'envio'   => (bool) $e->envio,
+        ]);
+
+        $curpsEmp   = $empleados->pluck('CURP')->filter()->map(fn($c) => mb_strtoupper(trim($c)))->flip();
+        $nombresEmp = $empleados->pluck('Nombre')->filter()->map(fn($n) => mb_strtoupper(trim($n)))->flip();
+
+        $operadores = CatOperador::all()
+            ->reject(function ($o) use ($curpsEmp, $nombresEmp) {
+                $curp   = mb_strtoupper(trim((string) $o->CURP));
+                $nombre = mb_strtoupper(trim((string) $o->Operador));
+                return ($curp && $curpsEmp->has($curp)) || ($nombre && $nombresEmp->has($nombre));
+            })
+            ->map(fn($o) => (object) [
+                'origen'  => 'OPERADOR',
+                'id'      => $o->IdOper,
+                'Nombre'  => $o->Operador,
+                'CURP'    => $o->CURP,
+                'Unidad'  => $o->Unidad,
+                'envio'   => (bool) $o->envio,
+            ]);
+
+        return $empleados->concat($operadores)->values();
     }
 
     /*

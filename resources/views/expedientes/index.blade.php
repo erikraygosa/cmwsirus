@@ -174,20 +174,25 @@
                     <tbody>
                         @forelse ($empleados as $emp)
                             @php
-                                $info  = $completitud[$emp->IdEmpleado] ?? ['count'=>0,'total'=>$totalDocs,'pct'=>0,'completo'=>false];
+                                $esOperador = $emp->origen === 'OPERADOR';
+                                $base       = $esOperador ? '/expedientes/operador/' . $emp->id : '/expedientes/' . $emp->id;
+                                $info  = $completitud[$emp->origen.'_'.$emp->id] ?? ['count'=>0,'total'=>$totalDocs,'pct'=>0,'completo'=>false,'enviados'=>0];
                                 $color = $info['completo'] ? 'success' : ($info['pct'] >= 50 ? 'warning' : 'danger');
                                 $icono = $info['completo'] ? 'fa-check-circle text-success' : 'fa-exclamation-circle text-'.$color;
                             @endphp
                             <tr>
                                 <td class="align-middle text-muted" style="font-size:.82rem;">
-                                    {{ $emp->IdEmpleado }}
+                                    {{ $emp->id }}
+                                    @if($esOperador)
+                                        <span class="badge badge-secondary" style="font-size:.6rem;" title="Proviene de catoperadores">OP</span>
+                                    @endif
                                 </td>
                                 <td class="align-middle">
                                     <i class="fas {{ $icono }} mr-1"></i>
                                     <strong>{{ $emp->Nombre }}</strong>
                                     <button type="button"
                                             class="btn btn-link btn-editar-nombre p-0 ml-1"
-                                            data-id="{{ $emp->IdEmpleado }}"
+                                            data-base="{{ $base }}"
                                             data-nombre="{{ $emp->Nombre }}"
                                             title="Editar nombre"
                                             style="line-height:1;">
@@ -203,7 +208,7 @@
                                     @else
                                         <button type="button"
                                                 class="btn btn-xs btn-outline-warning btn-editar-curp"
-                                                data-id="{{ $emp->IdEmpleado }}"
+                                                data-base="{{ $base }}"
                                                 data-nombre="{{ $emp->Nombre }}"
                                                 style="font-size:.72rem;padding:1px 6px;"
                                                 title="Agregar CURP">
@@ -226,8 +231,8 @@
                                 </td>
                                 <td class="align-middle text-center d-none d-md-table-cell">
                                     {{-- Toggle envio a Drive --}}
-                                    <form action="{{ route('expedientes.envio.toggle', $emp->IdEmpleado) }}"
-                                          method="POST" class="d-inline form-envio" data-id="{{ $emp->IdEmpleado }}">
+                                    <form action="{{ $base }}/envio"
+                                          method="POST" class="d-inline form-envio">
                                         @csrf
                                         <input type="hidden" name="envio" value="{{ $emp->envio ? 0 : 1 }}">
                                         <button type="submit"
@@ -245,7 +250,7 @@
                                 </td>
                                 <td class="align-middle text-center">
                                     <div class="btn-group btn-group-sm" role="group">
-                                        <a href="{{ route('expedientes.show', $emp->IdEmpleado) }}"
+                                        <a href="{{ $base }}"
                                            class="btn btn-outline-primary"
                                            title="Ver expediente">
                                             <i class="fas fa-folder-open"></i>
@@ -253,7 +258,7 @@
                                         </a>
                                         <button type="button"
                                                 class="btn btn-outline-danger btn-dar-baja"
-                                                data-id="{{ $emp->IdEmpleado }}"
+                                                data-base="{{ $base }}"
                                                 data-nombre="{{ $emp->Nombre }}"
                                                 title="Dar de baja">
                                             <i class="fas fa-user-times"></i>
@@ -599,7 +604,7 @@
             document.getElementById('labelNombreCurp').textContent = this.dataset.nombre;
             document.getElementById('inputCurpEditar').value       = '';
             document.getElementById('formEditarCurp').action       =
-                '/expedientes/' + this.dataset.id + '/curp';
+                this.dataset.base + '/curp';
             $('#modalEditarCurp').modal('show');
         });
     });
@@ -610,7 +615,7 @@
             document.getElementById('labelNombreActual').textContent = this.dataset.nombre;
             document.getElementById('inputNombreEditar').value       = this.dataset.nombre;
             document.getElementById('formEditarNombre').action       =
-                '/expedientes/' + this.dataset.id + '/nombre';
+                this.dataset.base + '/nombre';
             $('#modalEditarNombre').modal('show');
         });
     });
@@ -620,7 +625,7 @@
         btn.addEventListener('click', function () {
             document.getElementById('labelNombreBaja').textContent = this.dataset.nombre;
             document.getElementById('formBaja').action             =
-                '/expedientes/' + this.dataset.id + '/baja';
+                this.dataset.base + '/baja';
             $('#modalBaja').modal('show');
         });
     });

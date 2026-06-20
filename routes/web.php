@@ -14,7 +14,6 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\resetController;
 use App\Http\Controllers\ImagenController;
 use App\Http\Controllers\ExpedienteController;
-use App\Http\Controllers\ExpedienteOperadorController;
 
 /* ================= Raíz / Login (pública) ================= */
 Route::get('/', function () {
@@ -97,7 +96,7 @@ Route::middleware([
         Route::post('/{folio}/edit', [ImagenController::class, 'updateEdit'])->name('edit.update');
     });
 
-    /* ---- MÓDULO EXPEDIENTES ---- */
+    /* ---- MÓDULO EXPEDIENTES — lista unificada catempleados + catoperadores ---- */
     Route::prefix('expedientes')->name('expedientes.')->middleware('can:expedientes')->group(function () {
 
         // ⚠️ Rutas estáticas SIEMPRE antes de /{id}
@@ -106,35 +105,27 @@ Route::middleware([
         Route::get('/masivo/drive/{syncId}', [ExpedienteController::class, 'syncDriveStatus']) ->name('drive.status');
 
         Route::get('/',                      [ExpedienteController::class, 'index'])        ->name('index');
+        Route::delete('/documentos/{idAdj}', [ExpedienteController::class, 'destroy'])      ->name('destroy');
+
+        // Registros provenientes de catoperadores (mysql3) — rutas /operador/* antes de /{id}
+        Route::get('/operador/{id}',             [ExpedienteController::class, 'showOperador'])           ->name('operador.show');
+        Route::post('/operador/{id}/documentos', [ExpedienteController::class, 'storeOperador'])          ->name('operador.store');
+        Route::get('/operador/{id}/zip',         [ExpedienteController::class, 'downloadZipOperador'])    ->name('operador.zip');
+        Route::post('/operador/{id}/envio',      [ExpedienteController::class, 'toggleEnvioOperador'])    ->name('operador.envio.toggle');
+        Route::post('/operador/{id}/vigencia',   [ExpedienteController::class, 'updateVigenciaOperador'])->name('operador.vigencia.update');
+        Route::patch('/operador/{id}/curp',      [ExpedienteController::class, 'updateCurpOperador'])    ->name('operador.curp.update');
+        Route::patch('/operador/{id}/nombre',    [ExpedienteController::class, 'updateNombreOperador'])  ->name('operador.nombre.update');
+        Route::post('/operador/{id}/baja',       [ExpedienteController::class, 'darDeBajaOperador'])     ->name('operador.baja');
+
+        // Registros de catempleados (default)
         Route::get('/{id}',                  [ExpedienteController::class, 'show'])         ->name('show');
         Route::post('/{id}/documentos',      [ExpedienteController::class, 'store'])        ->name('store');
-        Route::delete('/documentos/{idAdj}', [ExpedienteController::class, 'destroy'])      ->name('destroy');
         Route::get('/{id}/zip',              [ExpedienteController::class, 'downloadZip'])  ->name('zip');
         Route::post('/{id}/envio',           [ExpedienteController::class, 'toggleEnvio'])  ->name('envio.toggle');
         Route::post('/{id}/vigencia',        [ExpedienteController::class, 'updateVigencia'])->name('vigencia.update');
         Route::patch('/{id}/curp',           [ExpedienteController::class, 'updateCurp'])   ->name('curp.update');
         Route::patch('/{id}/nombre',         [ExpedienteController::class, 'updateNombre']) ->name('nombre.update');
         Route::post('/{id}/baja',            [ExpedienteController::class, 'darDeBaja'])    ->name('baja');
-    });
-
-    /* ---- MÓDULO EXPEDIENTES OPERADORES (catoperadores, mysql3) ---- */
-    Route::prefix('expedientes-operadores')->name('expedientes-operadores.')->middleware('can:expedientes')->group(function () {
-
-        // ⚠️ Rutas estáticas SIEMPRE antes de /{id}
-        Route::get('/masivo/zip',            [ExpedienteOperadorController::class, 'exportMasivo'])     ->name('masivo.zip');
-        Route::post('/masivo/drive',         [ExpedienteOperadorController::class, 'syncDrive'])       ->name('drive.sync');
-        Route::get('/masivo/drive/{syncId}', [ExpedienteOperadorController::class, 'syncDriveStatus']) ->name('drive.status');
-
-        Route::get('/',                      [ExpedienteOperadorController::class, 'index'])        ->name('index');
-        Route::get('/{id}',                  [ExpedienteOperadorController::class, 'show'])         ->name('show');
-        Route::post('/{id}/documentos',      [ExpedienteOperadorController::class, 'store'])        ->name('store');
-        Route::delete('/documentos/{idAdj}', [ExpedienteOperadorController::class, 'destroy'])      ->name('destroy');
-        Route::get('/{id}/zip',              [ExpedienteOperadorController::class, 'downloadZip'])  ->name('zip');
-        Route::post('/{id}/envio',           [ExpedienteOperadorController::class, 'toggleEnvio'])  ->name('envio.toggle');
-        Route::post('/{id}/vigencia',        [ExpedienteOperadorController::class, 'updateVigencia'])->name('vigencia.update');
-        Route::patch('/{id}/curp',           [ExpedienteOperadorController::class, 'updateCurp'])   ->name('curp.update');
-        Route::patch('/{id}/nombre',         [ExpedienteOperadorController::class, 'updateNombre']) ->name('nombre.update');
-        Route::post('/{id}/baja',            [ExpedienteOperadorController::class, 'darDeBaja'])    ->name('baja');
     });
 
 });

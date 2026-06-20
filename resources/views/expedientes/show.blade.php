@@ -1,6 +1,11 @@
 @extends('adminlte::page')
 
-@section('title', 'Expediente — ' . $empleado->Nombre)
+@php
+    $esOperador = $origen === 'OPERADOR';
+    $base       = $esOperador ? '/expedientes/operador/' . $id : '/expedientes/' . $id;
+@endphp
+
+@section('title', 'Expediente — ' . $nombreMostrar)
 
 @section('content_header')
     <div class="d-flex justify-content-between align-items-center flex-wrap" style="gap:.5rem;">
@@ -10,16 +15,19 @@
             </a>
             <span style="font-size:1.1rem;font-weight:600;">
                 <i class="fas fa-folder-open text-primary mr-1"></i>
-                {{ $empleado->Nombre }}
+                {{ $nombreMostrar }}
             </span>
-            <span class="badge badge-secondary ml-2">ID {{ $empleado->IdEmpleado }}</span>
+            <span class="badge badge-secondary ml-2">ID {{ $id }}</span>
+            @if($esOperador)
+                <span class="badge badge-secondary ml-1" title="Proviene de catoperadores">OP</span>
+            @endif
             @if($completo)
                 <span class="badge badge-success ml-1"><i class="fas fa-check mr-1"></i>Expediente completo</span>
             @else
                 <span class="badge badge-warning ml-1">{{ $subidos }}/{{ $totalDocs }} obligatorios</span>
             @endif
             <span class="badge badge-secondary ml-1">{{ $subidosTotal }}/{{ count($catalogo) }} subidos</span>
-            @if($empleado->envio)
+            @if($envio)
                 <span class="badge badge-teal ml-1">
                     <i class="fab fa-google-drive mr-1"></i>Marcado para Drive
                 </span>
@@ -210,7 +218,7 @@
                                 @endif
 
                                 {{-- Mini-form para editar fecha --}}
-                                <form action="{{ route('expedientes.vigencia.update', $empleado->IdEmpleado) }}"
+                                <form action="{{ $base . '/vigencia' }}"
                                       method="POST" class="d-flex align-items-center mt-1" style="gap:.3rem;">
                                     @csrf
                                     <input type="hidden" name="campo" value="{{ $campoVig }}">
@@ -298,7 +306,7 @@
         <div class="modal-dialog" role="document">
             <div class="modal-content">
                 <form id="formSubir"
-                      action="{{ route('expedientes.store', $empleado->IdEmpleado) }}"
+                      action="{{ $base . '/documentos' }}"
                       method="POST"
                       enctype="multipart/form-data">
                     @csrf
@@ -414,7 +422,7 @@
     <div class="modal fade" id="modalZip" tabindex="-1" role="dialog">
         <div class="modal-dialog" role="document">
             <div class="modal-content">
-                <form action="{{ route('expedientes.zip', $empleado->IdEmpleado) }}" method="GET">
+                <form action="{{ $base . '/zip' }}" method="GET">
                     <div class="modal-header">
                         <h5 class="modal-title"><i class="fas fa-file-archive mr-1"></i> Descargar ZIP del expediente</h5>
                         <button type="button" class="close" data-dismiss="modal"><span>&times;</span></button>
@@ -765,7 +773,7 @@
         btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Procesando…';
 
         const ts    = Date.now();
-        const action = '{{ route('expedientes.store', $empleado->IdEmpleado) }}';
+        const action = '{{ $base . '/documentos' }}';
         const token  = document.querySelector('meta[name="csrf-token"]').content;
 
         const enviar = (blob, nombre) => {
