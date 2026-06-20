@@ -46,6 +46,18 @@ class TblAdjunto extends Model
             ->where('IdRegTab', $idEmpleado);
     }
 
+    /**
+     * Documentos de un registro específico en una tabla dada.
+     *
+     * Uso: TblAdjunto::deTabla('OPERADOR', $idOper)->porTipo('INE')->first()
+     */
+    public function scopeDeTabla($query, string $tabla, int $idRegTab): \Illuminate\Database\Eloquent\Builder
+    {
+        return $query
+            ->where('Tabla', $tabla)
+            ->where('IdRegTab', $idRegTab);
+    }
+
     public function scopePorTipo($query, string $tipo): \Illuminate\Database\Eloquent\Builder
     {
         // El tipo se guarda en Comentarios con prefijo TIPO:

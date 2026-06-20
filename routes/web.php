@@ -14,6 +14,7 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\resetController;
 use App\Http\Controllers\ImagenController;
 use App\Http\Controllers\ExpedienteController;
+use App\Http\Controllers\ExpedienteOperadorController;
 
 /* ================= Raíz / Login (pública) ================= */
 Route::get('/', function () {
@@ -114,6 +115,26 @@ Route::middleware([
         Route::patch('/{id}/curp',           [ExpedienteController::class, 'updateCurp'])   ->name('curp.update');
         Route::patch('/{id}/nombre',         [ExpedienteController::class, 'updateNombre']) ->name('nombre.update');
         Route::post('/{id}/baja',            [ExpedienteController::class, 'darDeBaja'])    ->name('baja');
+    });
+
+    /* ---- MÓDULO EXPEDIENTES OPERADORES (catoperadores, mysql3) ---- */
+    Route::prefix('expedientes-operadores')->name('expedientes-operadores.')->middleware('can:expedientes')->group(function () {
+
+        // ⚠️ Rutas estáticas SIEMPRE antes de /{id}
+        Route::get('/masivo/zip',            [ExpedienteOperadorController::class, 'exportMasivo'])     ->name('masivo.zip');
+        Route::post('/masivo/drive',         [ExpedienteOperadorController::class, 'syncDrive'])       ->name('drive.sync');
+        Route::get('/masivo/drive/{syncId}', [ExpedienteOperadorController::class, 'syncDriveStatus']) ->name('drive.status');
+
+        Route::get('/',                      [ExpedienteOperadorController::class, 'index'])        ->name('index');
+        Route::get('/{id}',                  [ExpedienteOperadorController::class, 'show'])         ->name('show');
+        Route::post('/{id}/documentos',      [ExpedienteOperadorController::class, 'store'])        ->name('store');
+        Route::delete('/documentos/{idAdj}', [ExpedienteOperadorController::class, 'destroy'])      ->name('destroy');
+        Route::get('/{id}/zip',              [ExpedienteOperadorController::class, 'downloadZip'])  ->name('zip');
+        Route::post('/{id}/envio',           [ExpedienteOperadorController::class, 'toggleEnvio'])  ->name('envio.toggle');
+        Route::post('/{id}/vigencia',        [ExpedienteOperadorController::class, 'updateVigencia'])->name('vigencia.update');
+        Route::patch('/{id}/curp',           [ExpedienteOperadorController::class, 'updateCurp'])   ->name('curp.update');
+        Route::patch('/{id}/nombre',         [ExpedienteOperadorController::class, 'updateNombre']) ->name('nombre.update');
+        Route::post('/{id}/baja',            [ExpedienteOperadorController::class, 'darDeBaja'])    ->name('baja');
     });
 
 });

@@ -207,4 +207,15 @@ return [
     'bucket'   => 'expedientes',
     'tabla_bd' => 'EMPLEADO',
     'max_mb'   => 10,
+
+    /*
+    |--------------------------------------------------------------------------
+    | Módulo Operadores (catoperadores, conexión mysql3)
+    |--------------------------------------------------------------------------
+    | Catálogo nuevo que reemplaza a catempleados. Usa su propio bucket y su
+    | propio valor de Tabla en tbladjuntos para no chocar con los IDs viejos
+    | (IdOper e IdEmpleado son secuencias independientes).
+    */
+    'bucket_operador'   => 'expedientes_operadores',
+    'tabla_bd_operador' => 'OPERADOR',
 ];

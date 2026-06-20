@@ -362,6 +362,11 @@ return [
                     'url'  => 'expedientes',
                     'icon' => 'fas fa-fw fa-users',
                 ],
+                [
+                    'text' => 'Operadores (catoperadores)',
+                    'url'  => 'expedientes-operadores',
+                    'icon' => 'fas fa-fw fa-id-badge',
+                ],
             ],
         ],
         [
