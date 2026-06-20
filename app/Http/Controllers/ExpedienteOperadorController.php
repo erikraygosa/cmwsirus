@@ -77,7 +77,7 @@ class ExpedienteOperadorController extends Controller
 
         $nombresCatalogo = collect(config('expediente_docs.documentos'))->map(fn($d) => $d['nombre'] ?? null);
 
-        // Mapa CURP/Nombre → nombres de los documentos ya capturados en el sistema anterior
+        // Mapa CURP/Nombre → [IdEmpleado, nombres de los docs ya capturados en el sistema anterior]
         $docsAnteriorPorCurp   = [];
         $docsAnteriorPorNombre = [];
         foreach ($empleadosViejos as $empViejo) {
@@ -89,8 +89,10 @@ class ExpedienteOperadorController extends Controller
                 ->map(fn($t) => $nombresCatalogo[$t] ?? $t)
                 ->values();
 
-            if ($empViejo->CURP)   $docsAnteriorPorCurp[$empViejo->CURP]     = $nombresDocs;
-            if ($empViejo->Nombre) $docsAnteriorPorNombre[$empViejo->Nombre] = $nombresDocs;
+            $info = ['IdEmpleado' => $empViejo->IdEmpleado, 'docs' => $nombresDocs];
+
+            if ($empViejo->CURP)   $docsAnteriorPorCurp[$empViejo->CURP]     = $info;
+            if ($empViejo->Nombre) $docsAnteriorPorNombre[$empViejo->Nombre] = $info;
         }
 
         // Construye mapa: IdOper → ['count' => N, 'pct' => NN, ...]  (solo página actual)
@@ -116,7 +118,8 @@ class ExpedienteOperadorController extends Controller
                 'enviados'          => $enviados,
                 'envio'             => $idsEnvio->contains($op->IdOper),
                 'duplicado_anterior'=> !is_null($docsAnterior),
-                'docs_anterior'     => $docsAnterior,
+                'docs_anterior'     => $docsAnterior['docs'] ?? null,
+                'id_empleado_viejo' => $docsAnterior['IdEmpleado'] ?? null,
             ];
         }
 

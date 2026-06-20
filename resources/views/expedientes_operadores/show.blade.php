@@ -34,11 +34,18 @@
 @section('content')
 
     @if ($duplicadoAnterior)
-        <div class="alert alert-info">
-            <i class="fas fa-check-double mr-1"></i>
-            <strong>Capturado en sistema anterior</strong> (mismo nombre/CURP, ID {{ $duplicadoAnterior['IdEmpleado'] }}):
-            {{ $duplicadoAnterior['docs']->implode(', ') }}.
-            Verifica antes de volver a subir o enviar a Drive para no duplicar el expediente.
+        <div class="alert alert-info d-flex align-items-center flex-wrap" style="gap:.5rem;">
+            <div class="flex-grow-1">
+                <i class="fas fa-check-double mr-1"></i>
+                <strong>Capturado en sistema anterior</strong> (mismo nombre/CURP, ID {{ $duplicadoAnterior['IdEmpleado'] }}):
+                {{ $duplicadoAnterior['docs']->implode(', ') }}.
+                Verifica antes de volver a subir o enviar a Drive para no duplicar el expediente.
+            </div>
+            <a href="{{ route('expedientes.show', $duplicadoAnterior['IdEmpleado']) }}"
+               target="_blank"
+               class="btn btn-sm btn-outline-primary">
+                <i class="fas fa-external-link-alt mr-1"></i> Ver expediente anterior
+            </a>
         </div>
     @endif
 

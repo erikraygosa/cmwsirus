@@ -194,10 +194,12 @@
                                         <i class="fas fa-pen" style="font-size:.6rem;color:#bbb;"></i>
                                     </button>
                                     @if($info['duplicado_anterior'])
-                                        <span class="badge badge-info ml-1" style="font-size:.62rem;cursor:help;"
-                                              title="Documentos ya capturados en el sistema anterior: {{ $info['docs_anterior']->implode(', ') }}. Evita duplicar el envío.">
+                                        <a href="{{ route('expedientes.show', $info['id_empleado_viejo']) }}"
+                                           target="_blank"
+                                           class="badge badge-info ml-1" style="font-size:.62rem;"
+                                           title="Documentos ya capturados en el sistema anterior: {{ $info['docs_anterior']->implode(', ') }}. Click para abrir ese expediente.">
                                             <i class="fas fa-check-double mr-1"></i>Capturado
-                                        </span>
+                                        </a>
                                     @endif
                                 </td>
                                 <td class="align-middle d-none d-lg-table-cell text-muted" style="font-size:.82rem;">
