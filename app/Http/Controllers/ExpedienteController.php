@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\CatEmpleado;
 use App\Models\CatOperador;
+use App\Models\OperadorDriveFlag;
 use App\Models\TblAdjunto;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -183,12 +184,16 @@ class ExpedienteController extends Controller
         $pct          = $totalDocs > 0 ? (int) round($subidos / $totalDocs * 100) : 0;
         $completo     = $subidos >= $totalDocs;
 
+        $envio = $esOperador
+            ? (bool) OperadorDriveFlag::where('IdOper', $id)->value('envio')
+            : (bool) $registro->envio;
+
         return view($vista, [
             'empleado'     => $registro,
             'origen'       => $origen,
             'id'           => $id,
             'nombreMostrar'=> $nombre,
-            'envio'        => (bool) $registro->envio,
+            'envio'        => $envio,
             'catalogo'     => $catalogo,
             'porTipo'      => $porTipo,
             'totalDocs'    => $totalDocs,
@@ -637,11 +642,13 @@ class ExpedienteController extends Controller
 
     public function toggleEnvioOperador(Request $request, int $id)
     {
-        $operador = CatOperador::findOrFail($id);
-        $operador->update(['envio' => $request->boolean('envio') ? 1 : 0]);
+        CatOperador::findOrFail($id);
+        $envio = $request->boolean('envio');
+
+        OperadorDriveFlag::updateOrCreate(['IdOper' => $id], ['envio' => $envio]);
 
         return back()->with('success',
-            $operador->envio
+            $envio
                 ? 'Operador marcado para envío a Drive.'
                 : 'Operador desmarcado del envío a Drive.'
         );
@@ -759,6 +766,9 @@ class ExpedienteController extends Controller
         $curpsEmp   = $empleados->pluck('CURP')->filter()->map(fn($c) => mb_strtoupper(trim($c)))->flip();
         $nombresEmp = $empleados->pluck('Nombre')->filter()->map(fn($n) => mb_strtoupper(trim($n)))->flip();
 
+        // catoperadores no tiene columna 'envio'; la marca vive en operador_drive_flags (cmwsirus)
+        $idsEnvioOperador = OperadorDriveFlag::where('envio', 1)->pluck('IdOper');
+
         $operadores = CatOperador::all()
             ->reject(function ($o) use ($curpsEmp, $nombresEmp) {
                 $curp   = mb_strtoupper(trim((string) $o->CURP));
@@ -771,7 +781,7 @@ class ExpedienteController extends Controller
                 'Nombre'  => $o->Operador,
                 'CURP'    => $o->CURP,
                 'Unidad'  => $o->Unidad,
-                'envio'   => (bool) $o->envio,
+                'envio'   => $idsEnvioOperador->contains($o->IdOper),
             ]);
 
         return $empleados->concat($operadores)->values();

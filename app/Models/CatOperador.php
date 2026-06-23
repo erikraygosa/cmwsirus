@@ -23,6 +23,6 @@ class CatOperador extends Model
         'IdEmpresa', 'IdOper', 'Unidad', 'IdRuta', 'Ruta',
         'CURP', 'Operador', 'Direccion', 'Telefono',
         'FechaNac', 'FechaIng', 'NumAfilIMSS',
-        'Estatus', 'VencimientoLic', 'IdOperOld', 'envio',
+        'Estatus', 'VencimientoLic', 'IdOperOld',
     ];
 }
