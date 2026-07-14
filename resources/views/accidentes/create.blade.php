@@ -112,6 +112,12 @@
           <label class="btn btn-outline-secondary">
             <input type="radio" name="dg_radioCargarCostos" id="dg_radioCargarCostos4" autocomplete="off" value="4"> Tercero interno
           </label>
+          <label class="btn btn-outline-secondary">
+            <input type="radio" name="dg_radioCargarCostos" id="dg_radioCargarCostos5" autocomplete="off" value="5"> RC viajero
+          </label>
+          <label class="btn btn-outline-secondary">
+            <input type="radio" name="dg_radioCargarCostos" id="dg_radioCargarCostos6" autocomplete="off" value="6"> Imagen
+          </label>
         </div>
       </div>
       <div class="col">

@@ -53,6 +53,14 @@ function obtenerCargoCostos($cargarCostosA){
           case 4:
             $cargoCostos = "Tercero interno";
             break;
+
+          case 5:
+            $cargoCostos = "RC viajero";
+            break;
+
+          case 6:
+            $cargoCostos = "Imagen";
+            break;
   }
 
   return $cargoCostos;
