@@ -128,3 +128,13 @@ La suite general conserva dos fallos anteriores en AuthenticationTest/Registrati
 - Validación de esta revisión: 36 pruebas aprobadas en memoria y con dobles, dos omitidas por requerir MySQL real. El agregado MySQL se verifica con una conexión simulada; no se ejecutó contra producción ni se crearon contenedores. Chromium verificó navegación sin solicitudes a CDN, Select2, búsqueda, borrador/token, QR simulado y bloqueo del doble envío. La cámara física y los tiempos reales del servidor de producción siguen requiriendo comprobación allí.
 
 Después de actualizar desde `origin/main`, ejecutar `php artisan config:clear`, `php artisan config:cache` y `php artisan view:cache`. Los recursos Select2 están incluidos en Git; no hace falta instalar paquetes nuevos. Mantener `COMBUSTIBLE_DB_CONNECTION=mysql_combustible`.
+
+## Esperas por bloqueos de metadatos
+
+La evidencia de producción mostró peticiones del módulo esperando `LOCK TABLES` durante muchos minutos. La instrumentación `wait/lock/metadata/sql/mdl` estaba desactivada, por lo que `sys.schema_table_lock_waits` vacío no descartaba esos bloqueos. Las sesiones en espera no identifican por sí solas a la conexión que originó el bloqueo.
+
+El servicio ahora establece `SET SESSION lock_wait_timeout = 5` al validar la conexión MySQL. Limita cada adquisición de metadatos de esta sesión, tanto en lecturas como en LOCK TABLES; no modifica la configuración global del servidor. Una sentencia que necesita varios bloqueos puede acumular varias esperas, y no es un límite universal de ejecución de SQL. Si la adquisición falla, se desconecta antes de ejecutar el callback de escrituras. Las lecturas que agotan la espera muestran una respuesta controlada 503, sin ocultar que la base sigue ocupada. Las conexiones iniciadas antes del cambio no reciben este límite retroactivamente.
+
+Para resolver una cola existente, un administrador debe verificar y cancelar únicamente las solicitudes identificadas que sigan esperando el mismo LOCK TABLES del módulo. No se deben cerrar conexiones Sleep ni transacciones de Delphi por antigüedad solamente, ni ejecutar UNLOCK TABLES desde otra conexión esperando liberar sus bloqueos. Si la cola reaparece, localizar el propietario original y coordinar con él la finalización de su operación. No se modificaron tablas, índices ni datos como parte de esta corrección.
+
+Validación de este ajuste: 38 pruebas aisladas aprobadas, dos omitidas por requerir MySQL real; pruebas de límite de sesión con conexiones simuladas, desconexión antes del callback al fallar LOCK TABLES y respuesta 503 de HTML/JSON. No se ejecutaron cancelaciones ni pruebas en producción desde el entorno de desarrollo.

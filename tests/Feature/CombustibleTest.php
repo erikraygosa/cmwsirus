@@ -464,3 +464,20 @@ it('uses the daily unique key without requesting locks on operational tables', f
     $fuel->omitNotice($this->actor);
     expect($this->db->table('tblavisospreciodiesel')->value('Respuesta'))->toBe('OMITIDO');
 });
+
+it('shows a controlled unavailable response when MySQL metadata waits expire', function () {
+    $this->seed(CombustiblePermissionSeeder::class);
+    $user = User::factory()->create();
+    $user->givePermissionTo('combustible_ver');
+    $this->actingAs($user);
+    $cause = new PDOException('Lock wait timeout exceeded');
+    $cause->errorInfo = ['HY000', 1205, 'Lock wait timeout exceeded'];
+    $exception = new \Illuminate\Database\QueryException('fuel_test', 'select * from tblcargascombustible', [], $cause);
+    $reports = Mockery::mock(Reports::class);
+    $reports->shouldReceive('query')->twice()->andThrow($exception);
+    $this->app->instance(Reports::class, $reports);
+    $settings = config('adminlte');
+    $this->getJson('/combustible')->assertStatus(503)->assertHeader('Retry-After', '10')->assertJsonPath('message', 'La base está ocupada por un bloqueo. Espere a que se libere antes de reintentar.');
+    $this->get('/combustible')->assertStatus(503)->assertSee('La base está ocupada por un bloqueo.');
+    expect(config('adminlte'))->toBe($settings);
+});

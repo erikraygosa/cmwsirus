@@ -22,6 +22,7 @@ it('uses the configured alias and checks the actual database on MySQL', function
     $connection->shouldReceive('getDriverName')->andReturn('mysql');
     $connection->shouldReceive('selectOne')->once()->with('SELECT DATABASE() AS db')
         ->andReturn((object) ['db' => 'bdcbcsirus']);
+    $connection->shouldReceive('statement')->once()->with('SET SESSION lock_wait_timeout = 5')->andReturn(true);
     DB::shouldReceive('connection')->once()->with('operativa_configurable')->andReturn($connection);
 
     expect(app(Database::class)->connection())->toBe($connection);
@@ -36,6 +37,7 @@ it('discovers a unique matching MySQL connection without assuming its alias', fu
     $connection->shouldReceive('getDriverName')->andReturn('mysql');
     $connection->shouldReceive('selectOne')->once()->with('SELECT DATABASE() AS db')
         ->andReturn((object) ['db' => 'bdcbcsirus']);
+    $connection->shouldReceive('statement')->once()->with('SET SESSION lock_wait_timeout = 5')->andReturn(true);
     DB::shouldReceive('connection')->once()->with('operativa_descubierta')->andReturn($connection);
 
     expect(app(Database::class)->connection())->toBe($connection);
@@ -58,6 +60,7 @@ it('compares the actual database against the configuration value', function () {
     $connection->shouldReceive('getDriverName')->andReturn('mysql');
     $connection->shouldReceive('selectOne')->once()->with('SELECT DATABASE() AS db')
         ->andReturn((object) ['db' => 'base_configurada']);
+    $connection->shouldReceive('statement')->once()->with('SET SESSION lock_wait_timeout = 5')->andReturn(true);
     DB::shouldReceive('connection')->once()->with('alias_de_prueba')->andReturn($connection);
 
     expect(app(Database::class)->connection())->toBe($connection);
@@ -117,4 +120,22 @@ it('aggregates MySQL totals in the server and preserves decimal precision and fi
     $totals = app(\App\Services\Combustible\Reports::class)->totals($query);
     expect($totals)->toBe(['Litros' => '99999999999.999', 'Importe' => '999999999999.99'])
         ->and($query->getBindings())->toBe(['2026-01-01', '2026-01-31', 'PM']);
+});
+
+it('disconnects when table acquisition fails before executing business writes', function () {
+    $connection = Mockery::mock(Connection::class);
+    $connection->shouldReceive('getDriverName')->andReturn('mysql');
+    $connection->shouldReceive('statement')->once()->withArgs(fn ($sql) => str_starts_with($sql, 'LOCK TABLES '))
+        ->andThrow(new RuntimeException('Lock wait timeout exceeded'));
+    $connection->shouldReceive('disconnect')->once();
+    $connection->shouldNotReceive('setReconnector');
+    $service = Mockery::mock(Database::class)->makePartial();
+    $service->shouldReceive('connection')->once()->andReturn($connection);
+    $executed = false;
+    expect(function () use ($service, &$executed) {
+        $service->locked(function () use (&$executed) {
+            $executed = true;
+        });
+    })->toThrow(RuntimeException::class, 'Lock wait timeout');
+    expect($executed)->toBeFalse();
 });

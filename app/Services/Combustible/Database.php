@@ -28,6 +28,9 @@ class Database
             throw new RuntimeException('La conexión de combustible debe apuntar a bdcbcsirus en MySQL.');
         }
 
+        // ATTR_TIMEOUT sólo limita la conexión. MySQL usa otro límite para metadatos.
+        $connection->statement('SET SESSION lock_wait_timeout = 5');
+
         return $connection;
     }
 
@@ -37,7 +40,14 @@ class Database
         $mysql = $db->getDriverName() !== 'sqlite';
         if ($mysql) {
             // MyISAM no tiene rollback. Incluimos todas las tablas utilizadas y no usamos alias.
-            $db->statement('LOCK TABLES tblcargascombustible WRITE, tblcostos WRITE, catunidades READ, tblavisospreciodiesel WRITE, tblexcepciones WRITE');
+            try {
+                $db->statement('LOCK TABLES tblcargascombustible WRITE, tblcostos WRITE, catunidades READ, tblavisospreciodiesel WRITE, tblexcepciones WRITE');
+            } catch (\Throwable $e) {
+                // Si no se adquirieron todos, cerrar la sesión libera cualquier bloqueo parcial.
+                // El callback aún no comenzó y no se ha realizado ninguna escritura de negocio.
+                $db->disconnect();
+                throw $e;
+            }
             // Una reconexión perdería LOCK TABLES; nunca reintentar una sentencia sin su bloqueo.
             $db->setReconnector(fn () => throw new RuntimeException('Se perdió la conexión con los bloqueos. Reintente la operación completa con el mismo identificador.'));
         }
