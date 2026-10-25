@@ -12,6 +12,7 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware) {
+        $middleware->trimStrings(except: ['qr']); // El QR es el valor exacto de catunidades.Unidad.
         //
     })
     ->withExceptions(function (Exceptions $exceptions) {

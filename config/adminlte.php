@@ -387,6 +387,13 @@ return [
             'can' => 'horarariosope',
         ],
            
+        [
+            'text' => 'Combustible',
+            'icon' => 'fas fa-fw fa-gas-pump',
+            'url' => 'combustible',
+            'can' => 'combustible_ver',
+        ],
+
         ['header' => 'Programa de Trabajo'],
         [
             'text' => 'Plan de Servicio',

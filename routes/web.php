@@ -35,6 +35,8 @@ Route::middleware([
     'verified',
 ])->group(function () {
 
+    require __DIR__.'/combustible.php';
+
     Route::resource('/dashboard', DashboardController::class)->names('dashboard');
 
     Route::resource('reset', resetController::class)->middleware('can:horararios')->names('reset');
