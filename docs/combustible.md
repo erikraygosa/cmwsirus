@@ -1,14 +1,14 @@
 # Cargas de combustible
 
-El módulo está en `/combustible` y utiliza el checkout de este proyecto (`cmwsirus`). No se crearon ni modificaron tablas operativas ni credenciales. La referencia recibida menciona «basecmw»; la base operativa solicitada es **bdcmcsirus**.
+El módulo está en `/combustible` y utiliza el checkout de este proyecto (`cmwsirus`). No se crearon ni modificaron tablas operativas ni credenciales. La referencia recibida menciona «basecmw»; la base operativa solicitada es **bdcbcsirus**.
 
 ## Aplicar en producción (por el propietario)
 
-1. Revisar y respaldar la aplicación y las bases por el procedimiento habitual. Integrar la rama `feature/cargas-combustible` en la versión aprobada. Si producción sigue `main` y admite avance directo, desde un checkout limpio:
+1. Revisar y respaldar la aplicación y las bases por el procedimiento habitual. Aplicar la versión aprobada de `origin/main`, que incluye la conexión exclusiva de combustible. Desde el checkout de producción sin cambios locales pendientes:
 
    ```sh
-   git fetch origin
-   git merge --ff-only origin/feature/cargas-combustible
+   git switch main
+   git pull --ff-only origin main
    ```
 
    Si el avance directo no es posible, resolver la integración por el flujo normal de revisión; no usar reset ni force push. Esta entrega no despliega a producción.
@@ -23,7 +23,13 @@ El módulo está en `/combustible` y utiliza el checkout de este proyecto (`cmws
 
    Se reutilizan AdminLTE, Spatie, Dompdf, Brick Math (dependencia de Laravel) y el lector `html5-qrcode` ya empleado en Imágenes. PHP requiere PDO MySQL, mbstring, iconv, XML, GD y **ZipArchive** para XLSX. No se agregaron paquetes Composer/NPM. El lector usa la versión fijada 2.3.8 desde unpkg.com; permitir ese recurso en la política CSP del navegador si corresponde. Si no carga, la búsqueda manual sigue disponible.
 
-3. **Verificar la conexión existente**, sin publicar sus valores. `config/combustible.php` busca una única conexión MySQL cuyo `database` sea `bdcmcsirus`. Si no es única, configurar únicamente `COMBUSTIBLE_DB_CONNECTION` con su alias existente en las variables privadas del despliegue. No se presupone `mysql2`, no se cambia su base y no se copian credenciales. El módulo comprueba `SELECT DATABASE()` antes de operar y rechaza bases diferentes. En producción el propietario verificó `mysql2.driver=mysql`, `mysql2.database=bdcmcsirus`, `SELECT DATABASE()=bdcmcsirus` y `COMBUSTIBLE_DB_CONNECTION=mysql2`; ese alias se configura externamente y no se fija en el código. Tener acceso a las tablas y permiso **LOCK TABLES** en esa conexión. No usar credenciales de producción para ejecutar pruebas.
+3. **Seleccionar la conexión exclusiva**. La inspección de tablas confirmó las cinco tablas del módulo en `bdcbcsirus`; `mysql2` apunta a `bdcmcsirus` y debe conservarse para los demás módulos. Se agregó el alias `mysql_combustible`, que usa el servidor, puerto, socket y credenciales existentes de `DB2_*`, pero fija únicamente su propia base a `bdcbcsirus`. No modifica `mysql2`, `mysql3` ni las credenciales. En el `.env` privado de producción, cambiar sólo esta selección:
+
+   ```dotenv
+   COMBUSTIBLE_DB_CONNECTION=mysql_combustible
+   ```
+
+   No cambiar `DB2_DATABASE` ni las otras variables `DB2_*`. El usuario MySQL existente debe tener acceso a `bdcbcsirus` y permiso **LOCK TABLES**. El servicio conserva la conexión configurable y compara `SELECT DATABASE()` contra `config('combustible.database')`, además de validar el driver. Si se selecciona `mysql2` con base `bdcmcsirus`, se rechazará. No se crean, renombran, copian ni eliminan bases o tablas. No se accedió a producción para validar esta corrección.
 
 4. Confirmar manualmente las estructuras existentes proporcionadas: `tblcargascombustible`, `tblavisospreciodiesel`, `tblcostos`, `catunidades` y `tblexcepciones`. Deben conservar sus claves únicas, columnas, MyISAM y latin1. Las tablas ya fueron creadas manualmente: **no hay migración operativa ni se debe ejecutar el fixture de tests sobre ellas**. En particular, `ControlDuplicado` debe admitir NULL y existir `uq_carga_token`, `uq_carga_activa` y `uq_aviso_usuario_fecha`. La conexión lee/escribe UTF-8 y MySQL convierte hacia las columnas latin1.
 
@@ -97,7 +103,7 @@ Para ejecutar los mismos casos y los de concurrencia real en un contenedor local
 
 ```sh
 docker run -d --name cmwsirus-fuel-mysql57 \
-  -e MYSQL_ALLOW_EMPTY_PASSWORD=yes -e MYSQL_DATABASE=bdcmcsirus \
+  -e MYSQL_ALLOW_EMPTY_PASSWORD=yes -e MYSQL_DATABASE=bdcbcsirus \
   -p 127.0.0.1:33075:3306 mysql:5.7.44
 docker exec cmwsirus-fuel-mysql57 mysqladmin ping --silent
 # Esperar a que el comando anterior confirme que está listo.
@@ -106,8 +112,8 @@ FUEL_MYSQL_TEST=1 php vendor/bin/pest -c phpunit.combustible.xml
 docker rm -f cmwsirus-fuel-mysql57
 ```
 
-El fixture de `tests/Support/FuelSchema.php` crea/recrea **únicamente** tablas del contenedor local en 127.0.0.1:33075, sin aceptar conexiones ni credenciales de producción. Usa las columnas operativas proporcionadas y un catálogo mínimo de unidades. Comprueba versión 5.7; el servicio real verifica base y ejecuta LOCK TABLES. Los 25 casos originales pasaron en MySQL 5.7 (242 aserciones). La corrección del nombre agrega siete pruebas de configuración y selección de conexión mediante dobles, sin consultas reales. En esta corrección se ejecutó la suite en memoria: 30 aprobadas y dos omitidas, exclusivas de MySQL; no se crearon contenedores ni se ejecutaron los fixtures MySQL. Incluye claves únicas/NULL de MyISAM, cuatro procesos concurrentes, idempotencia, rechazos de duplicado, captura parcial, cancelación y recaptura, avisos concurrentes, permisos HTTP, confirmaciones falsificadas/obsoletas, auditoría fragmentada, fallos inyectados y recuperación, edición histórica, recálculo opcional, restricciones de eliminación, totales y exportaciones.
+El fixture de `tests/Support/FuelSchema.php` crea/recrea **únicamente** tablas del contenedor local en 127.0.0.1:33075, sin aceptar conexiones ni credenciales de producción. Usa las columnas operativas proporcionadas y un catálogo mínimo de unidades. Comprueba versión 5.7; el servicio real verifica base y ejecuta LOCK TABLES. Los 25 casos originales pasaron en MySQL 5.7 (242 aserciones). La suite incorpora pruebas de configuración y selección de conexión mediante dobles, sin consultas reales. La corrección de conexión exclusiva se validó en memoria: 32 aprobadas y dos omitidas, exclusivas de MySQL; no se crearon contenedores ni se ejecutaron los fixtures MySQL. Incluye claves únicas/NULL de MyISAM, cuatro procesos concurrentes, idempotencia, rechazos de duplicado, captura parcial, cancelación y recaptura, avisos concurrentes, permisos HTTP, confirmaciones falsificadas/obsoletas, auditoría fragmentada, fallos inyectados y recuperación, edición histórica, recálculo opcional, restricciones de eliminación, totales y exportaciones.
 
-La validación original del módulo se realizó con MySQL **5.7.44**, tablas **MyISAM / latin1_swedish_ci** de prueba; no se accedió a las tablas reales de bdcmcsirus. En Chromium se comprobó login local, captura, cotización, persistencia de borrador/token tras recarga, fallback sin lector QR, bloqueo de doble envío y confirmación de precios. La cámara física de un celular queda como prueba de aceptación pendiente.
+La validación original del módulo se realizó con MySQL **5.7.44**, tablas **MyISAM / latin1_swedish_ci** de prueba; no se accedió a las tablas reales de bdcbcsirus. En Chromium se comprobó login local, captura, cotización, persistencia de borrador/token tras recarga, fallback sin lector QR, bloqueo de doble envío y confirmación de precios. La cámara física de un celular queda como prueba de aceptación pendiente.
 
 La suite general conserva dos fallos anteriores en AuthenticationTest/RegistrationTest por `route('dashboard')` inexistente; el proyecto tiene `dashboard.index`. No se cambian esas pruebas ni las rutas ajenas para ocultarlos. Las siete omisiones anteriores corresponden a funciones Jetstream deshabilitadas; la suite de combustible agrega dos omisiones (concurrencia y pérdida de sesión) cuando no se solicita MySQL.

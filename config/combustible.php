@@ -1,8 +1,8 @@
 <?php
 
 return [
-    // Si se omite, se busca una única conexión MySQL cuyo database sea bdcmcsirus.
+    // Si se omite, se busca una única conexión MySQL cuyo database sea bdcbcsirus.
     'connection' => env('COMBUSTIBLE_DB_CONNECTION'),
-    'database' => 'bdcmcsirus',
+    'database' => 'bdcbcsirus',
     'timezone' => 'America/Merida',
 ];

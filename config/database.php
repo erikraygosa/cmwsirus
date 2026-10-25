@@ -72,6 +72,22 @@ return [
             'strict' => true,
             'engine' => null,
         ],
+        // Combustible usa el mismo servidor y acceso de DB2, con su propia base.
+        // No cambia mysql2 ni las conexiones de los demás módulos.
+        'mysql_combustible' => [
+            'driver' => 'mysql',
+            'host' => env('DB2_HOST', '127.0.0.1'),
+            'port' => env('DB2_PORT', '3306'),
+            'database' => 'bdcbcsirus',
+            'username' => env('DB2_USERNAME', 'forge'),
+            'password' => env('DB2_PASSWORD', ''),
+            'unix_socket' => env('DB2_SOCKET', ''),
+            'charset' => 'utf8mb4',
+            'collation' => 'utf8mb4_unicode_ci',
+            'prefix' => '',
+            'strict' => true,
+            'engine' => null,
+        ],
         'mysql3' => [
             'driver' => 'mysql',
             'host' => env('DB3_HOST', '127.0.0.1'),

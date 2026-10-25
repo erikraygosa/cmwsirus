@@ -15,7 +15,7 @@ class Database
             $matches = collect(config('database.connections'))->filter(fn ($c) => in_array($c['driver'] ?? '', ['mysql', 'mariadb'], true)
                 && ($c['database'] ?? null) === config('combustible.database'));
             if ($matches->count() !== 1) {
-                throw new RuntimeException('Configure COMBUSTIBLE_DB_CONNECTION con la conexión existente a bdcmcsirus. No hay una selección única.');
+                throw new RuntimeException('Configure COMBUSTIBLE_DB_CONNECTION con la conexión existente a bdcbcsirus. No hay una selección única.');
             }
             $name = $matches->keys()->first();
         }
@@ -25,7 +25,7 @@ class Database
         }
         if (! in_array($connection->getDriverName(), ['mysql', 'mariadb'], true)
             || $connection->selectOne('SELECT DATABASE() AS db')->db !== config('combustible.database')) {
-            throw new RuntimeException('La conexión de combustible debe apuntar a bdcmcsirus en MySQL.');
+            throw new RuntimeException('La conexión de combustible debe apuntar a bdcbcsirus en MySQL.');
         }
 
         return $connection;
