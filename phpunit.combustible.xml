@@ -1,7 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <phpunit bootstrap="vendor/autoload.php" colors="true">
     <testsuites>
-        <testsuite name="Combustible"><file>tests/Feature/CombustibleTest.php</file></testsuite>
+        <testsuite name="Combustible">
+            <file>tests/Feature/CombustibleTest.php</file>
+            <file>tests/Unit/CombustibleDatabaseTest.php</file>
+        </testsuite>
     </testsuites>
     <php>
         <env name="APP_ENV" value="testing" force="true"/>

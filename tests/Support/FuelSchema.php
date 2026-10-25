@@ -11,7 +11,7 @@ class FuelSchema
         $mysql = getenv('FUEL_MYSQL_TEST') === '1';
         config(['database.connections.fuel_test' => $mysql ? [
             'driver' => 'mysql', 'host' => '127.0.0.1', 'port' => 33075,
-            'database' => 'bdcbcsirus', 'username' => 'root', 'password' => '',
+            'database' => 'bdcmcsirus', 'username' => 'root', 'password' => '',
             'charset' => 'utf8mb4', 'collation' => 'utf8mb4_unicode_ci', 'strict' => true,
         ] : ['driver' => 'sqlite', 'database' => ':memory:', 'foreign_key_constraints' => true]]);
         config(['combustible.connection' => 'fuel_test']);

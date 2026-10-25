@@ -1,6 +1,6 @@
 # Cargas de combustible
 
-El módulo está en `/combustible` y utiliza el checkout de este proyecto (`cmwsirus`). No se crearon ni modificaron tablas operativas ni credenciales. La referencia recibida menciona «basecmw»; la base operativa solicitada es **bdcbcsirus**.
+El módulo está en `/combustible` y utiliza el checkout de este proyecto (`cmwsirus`). No se crearon ni modificaron tablas operativas ni credenciales. La referencia recibida menciona «basecmw»; la base operativa solicitada es **bdcmcsirus**.
 
 ## Aplicar en producción (por el propietario)
 
@@ -23,7 +23,7 @@ El módulo está en `/combustible` y utiliza el checkout de este proyecto (`cmws
 
    Se reutilizan AdminLTE, Spatie, Dompdf, Brick Math (dependencia de Laravel) y el lector `html5-qrcode` ya empleado en Imágenes. PHP requiere PDO MySQL, mbstring, iconv, XML, GD y **ZipArchive** para XLSX. No se agregaron paquetes Composer/NPM. El lector usa la versión fijada 2.3.8 desde unpkg.com; permitir ese recurso en la política CSP del navegador si corresponde. Si no carga, la búsqueda manual sigue disponible.
 
-3. **Verificar la conexión existente**, sin publicar sus valores. `config/combustible.php` busca una única conexión MySQL cuyo `database` sea `bdcbcsirus`. Si no es única, configurar únicamente `COMBUSTIBLE_DB_CONNECTION` con su alias existente en las variables privadas del despliegue. No se presupone `mysql2`, no se cambia su base y no se copian credenciales. El módulo comprueba `SELECT DATABASE()` antes de operar y rechaza bases diferentes. Tener acceso a las tablas y permiso **LOCK TABLES** en esa conexión. No usar credenciales de producción para ejecutar pruebas.
+3. **Verificar la conexión existente**, sin publicar sus valores. `config/combustible.php` busca una única conexión MySQL cuyo `database` sea `bdcmcsirus`. Si no es única, configurar únicamente `COMBUSTIBLE_DB_CONNECTION` con su alias existente en las variables privadas del despliegue. No se presupone `mysql2`, no se cambia su base y no se copian credenciales. El módulo comprueba `SELECT DATABASE()` antes de operar y rechaza bases diferentes. En producción el propietario verificó `mysql2.driver=mysql`, `mysql2.database=bdcmcsirus`, `SELECT DATABASE()=bdcmcsirus` y `COMBUSTIBLE_DB_CONNECTION=mysql2`; ese alias se configura externamente y no se fija en el código. Tener acceso a las tablas y permiso **LOCK TABLES** en esa conexión. No usar credenciales de producción para ejecutar pruebas.
 
 4. Confirmar manualmente las estructuras existentes proporcionadas: `tblcargascombustible`, `tblavisospreciodiesel`, `tblcostos`, `catunidades` y `tblexcepciones`. Deben conservar sus claves únicas, columnas, MyISAM y latin1. Las tablas ya fueron creadas manualmente: **no hay migración operativa ni se debe ejecutar el fixture de tests sobre ellas**. En particular, `ControlDuplicado` debe admitir NULL y existir `uq_carga_token`, `uq_carga_activa` y `uq_aviso_usuario_fecha`. La conexión lee/escribe UTF-8 y MySQL convierte hacia las columnas latin1.
 
@@ -97,7 +97,7 @@ Para ejecutar los mismos casos y los de concurrencia real en un contenedor local
 
 ```sh
 docker run -d --name cmwsirus-fuel-mysql57 \
-  -e MYSQL_ALLOW_EMPTY_PASSWORD=yes -e MYSQL_DATABASE=bdcbcsirus \
+  -e MYSQL_ALLOW_EMPTY_PASSWORD=yes -e MYSQL_DATABASE=bdcmcsirus \
   -p 127.0.0.1:33075:3306 mysql:5.7.44
 docker exec cmwsirus-fuel-mysql57 mysqladmin ping --silent
 # Esperar a que el comando anterior confirme que está listo.
@@ -106,8 +106,8 @@ FUEL_MYSQL_TEST=1 php vendor/bin/pest -c phpunit.combustible.xml
 docker rm -f cmwsirus-fuel-mysql57
 ```
 
-El fixture de `tests/Support/FuelSchema.php` crea/recrea **únicamente** tablas del contenedor local en 127.0.0.1:33075, sin aceptar conexiones ni credenciales de producción. Usa las columnas operativas proporcionadas y un catálogo mínimo de unidades. Comprueba versión 5.7; el servicio real verifica base y ejecuta LOCK TABLES. La suite consta de 25 casos y pasó en MySQL 5.7 (242 aserciones). En SQLite pasan 23 y se omiten las dos comprobaciones exclusivas de MySQL. Incluye claves únicas/NULL de MyISAM, cuatro procesos concurrentes, idempotencia, rechazos de duplicado, captura parcial, cancelación y recaptura, avisos concurrentes, permisos HTTP, confirmaciones falsificadas/obsoletas, auditoría fragmentada, fallos inyectados y recuperación, edición histórica, recálculo opcional, restricciones de eliminación, totales y exportaciones.
+El fixture de `tests/Support/FuelSchema.php` crea/recrea **únicamente** tablas del contenedor local en 127.0.0.1:33075, sin aceptar conexiones ni credenciales de producción. Usa las columnas operativas proporcionadas y un catálogo mínimo de unidades. Comprueba versión 5.7; el servicio real verifica base y ejecuta LOCK TABLES. Los 25 casos originales pasaron en MySQL 5.7 (242 aserciones). La corrección del nombre agrega siete pruebas de configuración y selección de conexión mediante dobles, sin consultas reales. En esta corrección se ejecutó la suite en memoria: 30 aprobadas y dos omitidas, exclusivas de MySQL; no se crearon contenedores ni se ejecutaron los fixtures MySQL. Incluye claves únicas/NULL de MyISAM, cuatro procesos concurrentes, idempotencia, rechazos de duplicado, captura parcial, cancelación y recaptura, avisos concurrentes, permisos HTTP, confirmaciones falsificadas/obsoletas, auditoría fragmentada, fallos inyectados y recuperación, edición histórica, recálculo opcional, restricciones de eliminación, totales y exportaciones.
 
-Se validó con MySQL **5.7.44**, tablas **MyISAM / latin1_swedish_ci** de prueba; no se accedió a las tablas reales de bdcbcsirus. En Chromium se comprobó login local, captura, cotización, persistencia de borrador/token tras recarga, fallback sin lector QR, bloqueo de doble envío y confirmación de precios. La cámara física de un celular queda como prueba de aceptación pendiente.
+La validación original del módulo se realizó con MySQL **5.7.44**, tablas **MyISAM / latin1_swedish_ci** de prueba; no se accedió a las tablas reales de bdcmcsirus. En Chromium se comprobó login local, captura, cotización, persistencia de borrador/token tras recarga, fallback sin lector QR, bloqueo de doble envío y confirmación de precios. La cámara física de un celular queda como prueba de aceptación pendiente.
 
 La suite general conserva dos fallos anteriores en AuthenticationTest/RegistrationTest por `route('dashboard')` inexistente; el proyecto tiene `dashboard.index`. No se cambian esas pruebas ni las rutas ajenas para ocultarlos. Las siete omisiones anteriores corresponden a funciones Jetstream deshabilitadas; la suite de combustible agrega dos omisiones (concurrencia y pérdida de sesión) cuando no se solicita MySQL.
