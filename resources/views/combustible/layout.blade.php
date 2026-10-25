@@ -20,10 +20,17 @@ window.fuelMessage = function(message, ok=false) {
  const el=document.getElementById('fuel-message'); el.textContent=message; el.className='alert '+(ok?'alert-success':'alert-danger'); el.scrollIntoView({block:'nearest'});
 };
 window.fuelRequest = async function(url, options={}) {
- const response=await fetch(url, {...options, headers:{'Accept':'application/json','X-CSRF-TOKEN':@json(csrf_token()), ...options.headers}});
- const data=await response.json().catch(()=>({message:'Respuesta inesperada del servidor. Conserve los datos y el identificador para reintentar.'}));
- if(!response.ok) throw new Error((Object.values(data.errors||{}).flat().join(' ')||data.message||'No se pudo completar la solicitud.')+(data.operacion?' Identificador: '+data.operacion:''));
- return data;
+ const controller=new AbortController();
+ const timer=setTimeout(()=>controller.abort(),(options.method||'GET')==='GET'?10000:30000);
+ try{
+  const response=await fetch(url, {...options, signal:controller.signal,headers:{'Accept':'application/json','X-CSRF-TOKEN':@json(csrf_token()), ...options.headers}});
+  const data=await response.json().catch(()=>({message:'Respuesta inesperada del servidor. Reintente el mismo envío.'}));
+  if(!response.ok) throw new Error((Object.values(data.errors||{}).flat().join(' ')||data.message||'No se pudo completar la solicitud.')+(data.operacion?' Identificador: '+data.operacion:''));
+  return data;
+ }catch(error){
+  if(error.name==='AbortError')throw new Error('La solicitud tardó demasiado. Reintente el mismo envío; conserve esta captura.');
+  throw error;
+ }finally{clearTimeout(timer);}
 };
 document.querySelectorAll('form[data-fuel-mutation]').forEach(form=>form.addEventListener('submit',async event=>{
  event.preventDefault(); if(form.dataset.busy==='1') return;

@@ -4,7 +4,7 @@ use App\Http\Controllers\CombustibleController;
 use Illuminate\Support\Facades\Route;
 
 // Este archivo se incluye dentro del grupo auth:sanctum + auth_session + verified.
-Route::prefix('combustible')->name('combustible.')->middleware('can:combustible_ver')->controller(CombustibleController::class)->group(function () {
+Route::prefix('combustible')->name('combustible.')->middleware(['can:combustible_ver', \App\Http\Middleware\CombustibleUi::class])->controller(CombustibleController::class)->group(function () {
     Route::get('/', 'index')->name('index');
     Route::post('/operaciones/reintentar', 'resume')->name('resume');
     Route::get('/unidades', 'units')->name('units');

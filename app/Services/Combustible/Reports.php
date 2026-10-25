@@ -24,10 +24,17 @@ class Reports
 
     public function totals(Builder $query): array
     {
-        // MySQL SUM(DECIMAL) es exacto; sumar en PHP con BigDecimal también lo es en los dobles SQLite.
+        if (in_array($query->getConnection()->getDriverName(), ['mysql', 'mariadb'], true)) {
+            // SUM(DECIMAL) es exacto en MySQL: una fila de totales, no todo el detalle.
+            $row = (clone $query)->where('Estatus', 'A')->reorder()
+                ->selectRaw('COALESCE(SUM(Litros), 0) AS litros, COALESCE(SUM(Importe), 0) AS importe')->first();
+
+            return ['Litros' => Decimal::normalize((string) $row->litros), 'Importe' => Decimal::normalize((string) $row->importe, 2)];
+        }
+        // SQLite usa punto flotante para SUM; mantener la suma decimal en los dobles de prueba.
         $litres = \Brick\Math\BigDecimal::zero();
         $amount = \Brick\Math\BigDecimal::zero();
-        foreach ((clone $query)->where('Estatus', 'A')->cursor() as $row) {
+        foreach ((clone $query)->where('Estatus', 'A')->select(['Litros', 'Importe'])->cursor() as $row) {
             $litres = $litres->plus((string) $row->Litros);
             $amount = $amount->plus((string) $row->Importe);
         }

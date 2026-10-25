@@ -227,31 +227,33 @@ class FuelService
 
     public function notice(array $actor): bool
     {
-        return $this->database->locked(function ($db) use ($actor) {
-            if ($db->table('tblcostos')->where('IdCosto', 2)->where('Fecha', $this->today())->exists()) {
+        // La clave única usuario/fecha resuelve aperturas simultáneas sin bloquear cargas ni auditoría.
+        $db = $this->database->connection();
+        $today = $this->today();
+        if ($db->table('tblcostos')->where('IdCosto', 2)->where('Fecha', $today)->exists()) {
+            return false;
+        }
+        try {
+            $db->table('tblavisospreciodiesel')->insert([
+                'IdUsuario' => $actor['id'], 'Usuario' => $this->storedName($actor['name']), 'Fecha' => $today,
+                'FechaAviso' => $this->timestamp(), 'Respuesta' => 'MOSTRADO',
+            ]);
+        } catch (QueryException $e) {
+            if ($this->isDuplicate($e)) {
                 return false;
             }
-            try {
-                $db->table('tblavisospreciodiesel')->insert([
-                    'IdUsuario' => $actor['id'], 'Usuario' => $this->storedName($actor['name']), 'Fecha' => $this->today(),
-                    'FechaAviso' => $this->timestamp(), 'Respuesta' => 'MOSTRADO',
-                ]);
+            throw $e;
+        }
 
-                return true;
-            } catch (QueryException $e) {
-                if ($this->isDuplicate($e)) {
-                    return false;
-                }
-                throw $e;
-            }
-        });
+        return ! $db->table('tblcostos')->where('IdCosto', 2)->where('Fecha', $today)->exists();
     }
 
     public function omitNotice(array $actor): void
     {
-        $this->database->locked(fn ($db) => $db->table('tblavisospreciodiesel')
+        // UPDATE condicional de una fila; no necesita el bloqueo de las otras tablas.
+        $this->database->connection()->table('tblavisospreciodiesel')
             ->where('IdUsuario', $actor['id'])->where('Fecha', $this->today())->where('Respuesta', 'MOSTRADO')
-            ->update(['Respuesta' => 'OMITIDO', 'FechaRespuesta' => $this->timestamp()]));
+            ->update(['Respuesta' => 'OMITIDO', 'FechaRespuesta' => $this->timestamp()]);
     }
 
     public function resume(string $id, array $actor): void

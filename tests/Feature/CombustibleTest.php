@@ -420,3 +420,47 @@ it('revalidates pending deletion when newer prices or cancelled references appea
     expect(fn () => $this->service->deletePrice($last->Fecha, $args, $this->actor))->toThrow(ValidationException::class);
     expect($this->db->table('tblcostos')->where('IdCosto', 2)->where('Fecha', $last->Fecha)->exists())->toBeTrue();
 })->with(['newer', 'cancelled']);
+
+it('renders fuel screens without blocking CDN assets and keeps other modules configuration unchanged', function () {
+    $this->seed(CombustiblePermissionSeeder::class);
+    $user = User::factory()->create();
+    $user->givePermissionTo(Permission::where('name', 'like', 'combustible_%')->get());
+    $this->actingAs($user);
+    $settings = config('adminlte');
+    foreach (['/combustible', '/combustible/crear', '/combustible/precios', '/combustible/auditoria'] as $url) {
+        $this->get($url)->assertOk()->assertDontSee('fonts.googleapis.com')->assertDontSee('cdn.datatables.net')
+            ->assertDontSee('cdnjs.cloudflare.com')->assertDontSee('cdn.jsdelivr.net')
+            ->assertDontSee('<script src="https://unpkg', false)->assertDontSee('class="preloader ', false);
+        expect(config('adminlte'))->toBe($settings);
+    }
+    $response = $this->get('/combustible/crear');
+    $response->assertSee('vendor/select2/select2.full.min.js')->assertSee('name="TokenRegistro"', false)
+        ->assertDontSee('Determina el precio aplicable.')->assertDontSee('Puede corresponder a un día anterior trabajado.')
+        ->assertDontSee('El servidor valida la unidad y calcula el importe.')->assertDontSee('Identificador de envío:')
+        ->assertDontSee('Buscar unidad activa')->assertDontSee('id="unit-search"', false);
+});
+
+it('reads audit fragments in a batch rather than rescanning per operation', function () {
+    $this->seed(CombustiblePermissionSeeder::class);
+    $user = User::factory()->create();
+    $user->givePermissionTo(['combustible_ver', 'combustible_auditoria']);
+    for ($i = 1; $i <= 4; $i++) {
+        $this->service->create(array_replace($this->input, ['Litros' => (string) $i, 'TokenRegistro' => (string) Str::uuid()]), $this->actor);
+    }
+    $this->db->enableQueryLog();
+    $this->db->flushQueryLog();
+    $this->actingAs($user)->get('/combustible/auditoria')->assertOk()->assertSee('CREAR')->assertSee('COMPLETA')->assertSee($this->actor['name']);
+    $queries = collect($this->db->getQueryLog())->filter(fn ($q) => str_contains($q['query'], 'tblexcepciones'));
+    expect($queries->count())->toBe(2);
+    $this->db->disableQueryLog();
+});
+
+it('uses the daily unique key without requesting locks on operational tables', function () {
+    $database = Mockery::mock(\App\Services\Combustible\Database::class);
+    $database->shouldReceive('connection')->times(3)->andReturn($this->db);
+    $database->shouldNotReceive('locked');
+    $fuel = new FuelService($database, app(Journal::class));
+    expect($fuel->notice($this->actor))->toBeTrue()->and($fuel->notice($this->actor))->toBeFalse();
+    $fuel->omitNotice($this->actor);
+    expect($this->db->table('tblavisospreciodiesel')->value('Respuesta'))->toBe('OMITIDO');
+});

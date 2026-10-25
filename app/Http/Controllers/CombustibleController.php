@@ -181,12 +181,19 @@ class CombustibleController extends Controller
         $rows = $db->table('tblexcepciones')->where('Modulo', 'combustible')
             ->where('Datos', 'like', str_repeat('_', 36).'|BEGIN|%')
             ->when($input['operacion'] ?? '', fn ($q, $id) => $q->where('Datos', 'like', $id.'|BEGIN|%'))
-            ->orderByDesc('Fecha')->orderBy('Datos')->paginate(25)->withQueryString();
-        $rows->through(function ($row) use ($db, $journal) {
+            ->orderByDesc('Fecha')->orderBy('Datos')->simplePaginate(25)->withQueryString();
+        $ids = $rows->getCollection()->map(fn ($row) => explode('|', $row->Datos, 2)[0]);
+        $fragments = $ids->isEmpty() ? collect() : $db->table('tblexcepciones')->where('Modulo', 'combustible')
+            ->where(function ($query) use ($ids) {
+                foreach ($ids as $id) {
+                    $query->orWhere('Datos', 'like', $id.'|P|%')->orWhere('Datos', $id.'|OK');
+                }
+            })->pluck('Datos')->groupBy(fn ($data) => explode('|', $data, 2)[0]);
+        $rows->through(function ($row) use ($fragments, $journal) {
             $id = explode('|', $row->Datos, 2)[0];
             $diagnostic = null;
             try {
-                $intent = $journal->read($db, $id);
+                $intent = $journal->decode($fragments->get($id, collect())->filter(fn ($data) => str_starts_with($data, $id.'|P|'))->all(), $id);
             } catch (\Throwable $e) {
                 $intent = null;
                 $diagnostic = 'Los fragmentos no son consistentes. Solicite conciliación sin modificar la auditoría.';
@@ -194,7 +201,7 @@ class CombustibleController extends Controller
 
             return (object) ['id' => $id, 'Fecha' => $row->Fecha, 'action' => $row->Excepcion,
                 'actor' => $intent['actor'] ?? ['id' => '?', 'name' => $row->Usuario],
-                'complete' => $journal->done($db, $id), 'entries' => $intent['entries'] ?? [],
+                'complete' => $fragments->get($id, collect())->contains($id.'|OK'), 'entries' => $intent['entries'] ?? [],
                 'diagnostic' => $diagnostic ?? ($intent === null ? 'El plan está incompleto. Conserve el formulario original para reintentar.' : null)];
         });
 

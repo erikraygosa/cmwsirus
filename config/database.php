@@ -87,6 +87,7 @@ return [
             'prefix' => '',
             'strict' => true,
             'engine' => null,
+            'options' => extension_loaded('pdo_mysql') ? [PDO::ATTR_TIMEOUT => 5] : [],
         ],
         'mysql3' => [
             'driver' => 'mysql',

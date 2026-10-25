@@ -27,6 +27,12 @@ class Journal
     {
         $rows = $db->table('tblexcepciones')->where('Modulo', 'combustible')
             ->where('Datos', 'like', $id.'|P|%')->pluck('Datos')->all();
+
+        return $this->decode($rows, $id);
+    }
+
+    public function decode(array $rows, string $id): ?array
+    {
         if (! $rows) {
             return null;
         }

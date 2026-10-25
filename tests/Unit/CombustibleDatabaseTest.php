@@ -88,7 +88,8 @@ it('provides a separate fuel alias reusing DB2 access without changing its datab
     $fuel = $settings['connections']['mysql_combustible'];
     $existing = $settings['connections']['mysql2'];
     expect($fuel['driver'])->toBe('mysql')->and($fuel['database'])->toBe('bdcbcsirus');
-    unset($fuel['database'], $existing['database']);
+    expect($fuel['options'])->toBe(extension_loaded('pdo_mysql') ? [PDO::ATTR_TIMEOUT => 5] : []);
+    unset($fuel['database'], $fuel['options'], $existing['database']);
     // Comparar huellas evita exponer credenciales incluso si la aserción falla.
     expect(hash('sha256', serialize($fuel)))->toBe(hash('sha256', serialize($existing)));
 });
@@ -102,4 +103,18 @@ it('rejects mysql2 when it points to the other modules database', function () {
     DB::shouldReceive('connection')->once()->with('mysql2')->andReturn($connection);
 
     expect(fn () => app(Database::class)->connection())->toThrow(RuntimeException::class, 'bdcbcsirus');
+});
+
+it('aggregates MySQL totals in the server and preserves decimal precision and filters', function () {
+    $connection = Mockery::mock(Connection::class);
+    $connection->shouldReceive('getDriverName')->andReturn('mysql');
+    $connection->shouldReceive('select')->once()->withArgs(function ($sql, $bindings, $read) {
+        return str_contains($sql, 'SUM(Litros)') && str_contains($sql, 'SUM(Importe)')
+            && ! str_contains($sql, 'select *') && $bindings === ['2026-01-01', '2026-01-31', 'PM', 'A'];
+    })->andReturn([(object) ['litros' => '99999999999.999', 'importe' => '999999999999.99']]);
+    $query = new \Illuminate\Database\Query\Builder($connection, new \Illuminate\Database\Query\Grammars\MySqlGrammar, new \Illuminate\Database\Query\Processors\Processor);
+    $query->from('tblcargascombustible')->whereBetween('FechaTrabajo', ['2026-01-01', '2026-01-31'])->where('Turno', 'PM');
+    $totals = app(\App\Services\Combustible\Reports::class)->totals($query);
+    expect($totals)->toBe(['Litros' => '99999999999.999', 'Importe' => '999999999999.99'])
+        ->and($query->getBindings())->toBe(['2026-01-01', '2026-01-31', 'PM']);
 });

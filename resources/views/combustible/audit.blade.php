@@ -22,5 +22,5 @@
 @endforeach
 </div></article>
 @empty<p>No hay operaciones con estos filtros.</p>@endforelse
-{{ $rows->links('pagination::bootstrap-4') }}
+{{ $rows->links('pagination::simple-bootstrap-4') }}
 @stop
