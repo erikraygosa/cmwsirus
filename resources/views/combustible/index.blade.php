@@ -17,9 +17,9 @@
 </div>
 </form>
 <div class="alert alert-info">Totales de todas las cargas activas filtradas: <strong>{{ $totals['Litros'] }} litros · ${{ $totals['Importe'] }}</strong>. Las canceladas no se suman.</div>
-<div class="card table-responsive"><table class="table table-striped"><thead><tr><th>Folio</th><th>Carga</th><th>Trabajo</th><th>Turno</th><th>Unidad</th><th>Litros</th><th>Precio (fecha)</th><th>Importe</th><th>Estatus</th><th>Acciones</th></tr></thead><tbody>
+<div class="card table-responsive"><table class="table table-striped"><thead><tr><th>Folio</th><th>Ticket</th><th>Carga</th><th>Trabajo</th><th>Turno</th><th>Unidad</th><th>Km</th><th>Litros</th><th>Precio (fecha)</th><th>Importe</th><th>Estatus</th><th>Acciones</th></tr></thead><tbody>
 @forelse($rows as $row)
-<tr class="{{ $row->Estatus==='C'?'table-secondary':'' }}"><td>{{ $row->IdCarga }}</td><td>{{ $row->FechaCarga }}</td><td>{{ $row->FechaTrabajo }}</td><td>{{ $row->Turno }}</td><td>{{ $row->Unidad }}</td><td>{{ $row->Litros }}</td><td>{{ $row->PrecioLitro }} ({{ $row->FechaPrecio }})</td><td>{{ $row->Importe }}</td><td><strong>{{ $row->Estatus==='A'?'ACTIVA':'CANCELADA' }}</strong>@if($row->Estatus==='C')<p>{{ $row->MotivoCancelacion }}</p>@endif</td>
+<tr class="{{ $row->Estatus==='C'?'table-secondary':'' }}"><td>{{ $row->IdCarga }}</td><td>{{ $row->NumeroTicket??'—' }}</td><td>{{ $row->FechaCarga }}</td><td>{{ $row->FechaTrabajo }}</td><td>{{ $row->Turno }}</td><td>{{ $row->Unidad }}</td><td>{{ $row->Km??'—' }}</td><td>{{ $row->Litros }}</td><td>{{ $row->PrecioLitro }} ({{ $row->FechaPrecio }})</td><td>{{ $row->Importe }}</td><td><strong>{{ $row->Estatus==='A'?'ACTIVA':'CANCELADA' }}</strong>@if($row->Estatus==='C')<p>{{ $row->MotivoCancelacion }}</p>@endif</td>
 <td>
 @if($row->Estatus==='A')
 @can('combustible_editar')<a href="{{ route('combustible.edit',$row->IdCarga) }}">Editar</a>@endcan
@@ -31,7 +31,7 @@
 @endif
 <details><summary>Detalle</summary><p>{{ $row->Observaciones }}</p><small>Registro: {{ $row->UsuarioRegistro }} · {{ $row->FechaRegistro }}<br>Token: {{ $row->TokenRegistro }}</small></details>
 </td></tr>
-@empty<tr><td colspan="10">No hay cargas con estos filtros.</td></tr>@endforelse
+@empty<tr><td colspan="12">No hay cargas con estos filtros.</td></tr>@endforelse
 </tbody></table></div>
 <div>{{ $rows->links('pagination::bootstrap-4') }}</div>
 @stop

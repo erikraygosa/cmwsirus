@@ -6,7 +6,6 @@ use Illuminate\Database\Connection;
 use Illuminate\Database\QueryException;
 use Illuminate\Validation\ValidationException;
 use RuntimeException;
-use App\Services\Combustible\LockUnavailable;
 
 class FuelService
 {
@@ -102,6 +101,8 @@ class FuelService
             $data = [
                 'FechaCarga' => $input['FechaCarga'], 'FechaTrabajo' => $input['FechaTrabajo'],
                 'Turno' => $input['Turno'], 'IdUnidad' => $unit->IdUnidad, 'Unidad' => $unit->Unidad,
+                'NumeroTicket' => $input['NumeroTicket'] ?? null,
+                'Km' => isset($input['Km']) && $input['Km'] !== '' ? (int) $input['Km'] : null,
                 'Litros' => Decimal::normalize($input['Litros']),
                 ...$this->priced($db, $input['FechaCarga'], $input['Litros']),
                 'Observaciones' => $input['Observaciones'] ?? null,
@@ -126,6 +127,12 @@ class FuelService
             }
             $after['IdUnidad'] = $unit->IdUnidad;
             $after['Unidad'] = $unit->Unidad;
+            if (array_key_exists('NumeroTicket', $input)) {
+                $after['NumeroTicket'] = $input['NumeroTicket'];
+            }
+            if (array_key_exists('Km', $input)) {
+                $after['Km'] = isset($input['Km']) && $input['Km'] !== '' ? (int) $input['Km'] : null;
+            }
             $after['Litros'] = Decimal::normalize($input['Litros']);
             $after['Observaciones'] = $input['Observaciones'] ?? null;
             if ($before->FechaCarga !== $input['FechaCarga'] || Decimal::normalize((string) $before->Litros) !== $after['Litros']) {

@@ -2,6 +2,32 @@
 
 El módulo está en `/combustible` y utiliza el checkout de este proyecto (`cmwsirus`). No se crearon ni modificaron tablas operativas ni credenciales. La referencia recibida menciona «basecmw»; la base operativa solicitada es **bdcbcsirus**.
 
+## Actualizar una instalación existente: ticket y kilometraje
+
+La captura y edición incluyen **Número de ticket** obligatorio (texto latin1 de hasta 50 caracteres, conserva ceros iniciales) y **Kilometraje (opcional)** (entero entre 0 y 4294967295). Una lectura vacía se guarda como NULL; cero es una lectura válida. Se muestran en Consulta, XLSX y PDF, y se conservan en el borrador y la auditoría. Ticket/Km no cambian la regla existente de duplicados de cargas ni recalculan el importe.
+
+Esta actualización requiere dos columnas nuevas en `tblcargascombustible`. El comando dedicado valida la conexión y base real de combustible, revisa columnas existentes y sólo agrega las faltantes. No modifica `.env`, credenciales, conexiones ajenas, índices, motores ni datos históricos. No se deben ejecutar migraciones de otros módulos para este cambio.
+
+En el checkout de producción, actualizar y revisar primero:
+
+```powershell
+git pull --ff-only origin main
+php artisan config:clear
+php artisan combustible:actualizar-captura
+```
+
+Para agregar `NumeroTicket VARCHAR(50) NULL` y `Km INT UNSIGNED NULL`, ejecutar explícitamente en una ventana sin capturas:
+
+```powershell
+php artisan combustible:actualizar-captura --aplicar
+php artisan config:cache
+php artisan view:cache
+```
+
+El comando sin `--aplicar` sólo revisa. Se puede repetir: conserva columnas ya presentes, incluso si una ejecución anterior agregó una y quedó pendiente la otra. Agregar columnas ejecuta ALTER TABLE y requiere el permiso ALTER; puede esperar metadatos, con el límite de sesión vigente. Los registros anteriores conservan NULL en las columnas nuevas; al editarlos se solicita el ticket. Recuperar un envío cuyo plan se guardó antes de la actualización utiliza el plan original desde Consulta → Recuperar un envío pendiente, sin agregar valores nuevos al mismo token.
+
+Validación: 53 pruebas aprobadas en memoria y con dobles, tres omitidas por requerir MySQL real. Incluye captura sin Km, con cero y con lectura, ticket con ceros iniciales, validaciones, reintento sin duplicado, edición y limpieza de Km, exportaciones sin fórmulas y actualización idempotente del esquema histórico. No se ejecutó el comando ni pruebas contra producción.
+
 ## Aplicar en producción (por el propietario)
 
 1. Revisar y respaldar la aplicación y las bases por el procedimiento habitual. Aplicar la versión aprobada de `origin/main`, que incluye la conexión exclusiva de combustible. Desde el checkout de producción sin cambios locales pendientes:
@@ -29,7 +55,7 @@ El módulo está en `/combustible` y utiliza el checkout de este proyecto (`cmws
    COMBUSTIBLE_DB_CONNECTION=mysql_combustible
    ```
 
-   No cambiar `DB2_DATABASE` ni las otras variables `DB2_*`. El usuario MySQL existente debe tener acceso a `bdcbcsirus` y permiso **LOCK TABLES**. El servicio conserva la conexión configurable y compara `SELECT DATABASE()` contra `config('combustible.database')`, además de validar el driver. Si se selecciona `mysql2` con base `bdcmcsirus`, se rechazará. No se crean, renombran, copian ni eliminan bases o tablas. No se accedió a producción para validar esta corrección.
+   No cambiar `DB2_DATABASE` ni las otras variables `DB2_*`. El usuario MySQL existente debe tener acceso a `bdcbcsirus`; el módulo ya no solicita LOCK TABLES. El servicio conserva la conexión configurable y compara `SELECT DATABASE()` contra `config('combustible.database')`, además de validar el driver. Si se selecciona `mysql2` con base `bdcmcsirus`, se rechazará. No se crean, renombran, copian ni eliminan bases o tablas. No se accedió a producción para validar esta corrección.
 
 4. Confirmar manualmente las estructuras existentes proporcionadas: `tblcargascombustible`, `tblavisospreciodiesel`, `tblcostos`, `catunidades` y `tblexcepciones`. Deben conservar sus claves únicas, columnas, MyISAM y latin1. Las tablas ya fueron creadas manualmente: **no hay migración operativa ni se debe ejecutar el fixture de tests sobre ellas**. En particular, `ControlDuplicado` debe admitir NULL y existir `uq_carga_token`, `uq_carga_activa` y `uq_aviso_usuario_fecha`. La conexión lee/escribe UTF-8 y MySQL convierte hacia las columnas latin1.
 
@@ -69,7 +95,7 @@ El módulo está en `/combustible` y utiliza el checkout de este proyecto (`cmws
 - El aviso diario usa ID estable y la clave única por usuario/fecha, sin solicitar bloqueos explícitos sobre cargas, catálogo o auditoría. Sólo lo solicitan administradores de precios. Guarda MOSTRADO, OMITIDO o ACTUALIZADO y la respuesta cuando corresponde. El acceso manual a precios siempre está disponible.
 - La revisión del precio muestra cantidad y detalle de cargas activas. La confirmación cifrada está vinculada a usuario, fecha, precio propuesto, versión de precio/conjunto de registros y caduca en 30 minutos si todavía no comenzó la operación. Revalida bajo bloqueo. «No» mantiene precios/importes históricos; «Sí» recalcula exclusivamente las activas que fueron confirmadas. Las canceladas permanecen intactas. Sólo se elimina el último precio y si ninguna carga, ni cancelada, lo referencia.
 - Filtros por rango, tipo de fecha, unidad, turno y estatus; paginación de 25 filas. Totales sobre **todas** las activas filtradas. XLSX auténtico con celdas numéricas y texto explícito (sin fórmulas provenientes de datos), y PDF con los mismos filtros, ambas fechas, turno y estatus. Las canceladas se identifican y no suman.
-- Textos de captura/cancelación incompatibles con latin1 se rechazan. El nombre operativo puede transliterarse/abreviarse a 150 caracteres; nombre completo e ID se conservan sin pérdida en la auditoría. No hay operador, kilometraje, inventario ni fotos.
+- Textos de captura/cancelación incompatibles con latin1 se rechazan. El nombre operativo puede transliterarse/abreviarse a 150 caracteres; nombre completo e ID se conservan sin pérdida en la auditoría. No hay operador, inventario ni fotos. El kilometraje es opcional y no se usa para calcular rendimientos.
 
 ## MyISAM, auditoría y recuperación
 

@@ -54,7 +54,7 @@ class Reports
                 fwrite($handle, '<row>');
                 foreach ($values as $column => $value) {
                     $v = htmlspecialchars((string) $value, ENT_XML1 | ENT_QUOTES, 'UTF-8');
-                    if (in_array($column, [5, 7, 8], true) && preg_match('/^\d+(\.\d+)?$/', (string) $value)) {
+                    if (in_array($column, [6, 7, 9, 10], true) && preg_match('/^\d+(\.\d+)?$/', (string) $value)) {
                         fwrite($handle, '<c t="n"><v>'.$v.'</v></c>');
                     } else {
                         fwrite($handle, '<c t="inlineStr"><is><t xml:space="preserve">'.$v.'</t></is></c>');
@@ -62,13 +62,13 @@ class Reports
                 }
                 fwrite($handle, '</row>');
             };
-            $write(['Folio', 'Fecha carga', 'Fecha trabajo', 'Turno', 'Unidad', 'Litros', 'Fecha precio', 'Precio litro', 'Importe', 'Estatus', 'Observaciones', 'Motivo cancelación']);
+            $write(['Folio', 'Ticket', 'Fecha carga', 'Fecha trabajo', 'Turno', 'Unidad', 'Km', 'Litros', 'Fecha precio', 'Precio litro', 'Importe', 'Estatus', 'Observaciones', 'Motivo cancelación']);
             foreach ($rows as $row) {
-                $write([$row->IdCarga, $row->FechaCarga, $row->FechaTrabajo, $row->Turno, $row->Unidad,
+                $write([$row->IdCarga, $row->NumeroTicket ?? '', $row->FechaCarga, $row->FechaTrabajo, $row->Turno, $row->Unidad, $row->Km ?? '',
                     Decimal::normalize((string) $row->Litros), $row->FechaPrecio, Decimal::normalize((string) $row->PrecioLitro),
                     Decimal::normalize((string) $row->Importe, 2), $row->Estatus === 'A' ? 'ACTIVA' : 'CANCELADA', $row->Observaciones, $row->MotivoCancelacion]);
             }
-            $write(['TOTALES ACTIVAS', '', '', '', '', $totals['Litros'], '', '', $totals['Importe']]);
+            $write(['TOTALES ACTIVAS', '', '', '', '', '', '', $totals['Litros'], '', '', $totals['Importe']]);
             fwrite($handle, '</sheetData></worksheet>');
             fclose($handle);
             $handle = null;

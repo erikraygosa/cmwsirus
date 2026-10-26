@@ -12,6 +12,10 @@
 </div>
 <div class="mt-3">
 <label for="IdUnidad">Unidad</label><div class="input-group"><select id="IdUnidad" name="IdUnidad" class="form-control" required><option value="">Seleccione una unidad</option>@if($row)<option selected value="{{ $row->IdUnidad }}">{{ $row->Unidad }}</option>@endif</select><div class="input-group-append"><button id="qr-open" class="btn btn-outline-secondary" type="button" data-toggle="modal" data-target="#fuel-qr">Escanear QR</button></div></div></div>
+<div class="row mt-3">
+<div class="col-md-6"><label for="NumeroTicket">Número de ticket</label><input id="NumeroTicket" name="NumeroTicket" type="text" class="form-control" maxlength="50" value="{{ $row->NumeroTicket??'' }}" required></div>
+<div class="col-md-6"><label for="Km">Kilometraje (opcional)</label><input id="Km" name="Km" type="number" min="0" max="4294967295" step="1" class="form-control" value="{{ $row->Km??'' }}"></div>
+</div>
 <div class="row mt-3"><div class="col-md-4"><label for="Litros">Litros</label><input id="Litros" name="Litros" type="number" min="0.001" max="99999999.999" step="0.001" class="form-control" value="{{ $row->Litros??'' }}" required></div>
 <div class="col-md-8"><label>Precio e importe</label><p id="fuel-quote" aria-live="polite">{{ $row?'Precio histórico: $'.$row->PrecioLitro.' · Importe: $'.$row->Importe.' · Precio del '.$row->FechaPrecio:'Ingrese fecha de carga y litros para consultar el precio.' }}</p></div></div>
 <label for="Observaciones" class="mt-3">Observaciones (opcional)</label><textarea id="Observaciones" name="Observaciones" class="form-control" maxlength="255">{{ $row->Observaciones??'' }}</textarea>
@@ -35,7 +39,7 @@
 (()=>{
  const form=document.getElementById('fuel-capture'), select=document.getElementById('IdUnidad');
  const key='combustible:'+@json((string) auth()->id())+':'+@json($row?'editar:'.$row->IdCarga:'nueva');
- const fields={{ Illuminate\Support\Js::from(array_merge($row?['Operacion','Version']:['TokenRegistro'],['FechaCarga','FechaTrabajo','Turno','IdUnidad','Litros','Observaciones'])) }};
+ const fields={{ Illuminate\Support\Js::from(array_merge($row?['Operacion','Version']:['TokenRegistro'],['FechaCarga','FechaTrabajo','Turno','IdUnidad','NumeroTicket','Km','Litros','Observaciones'])) }};
  const save=()=>{try {const data=Object.fromEntries(fields.map(name=>[name,form.elements[name].value]));data.label=select.selectedOptions[0]?.textContent||'';sessionStorage.setItem(key,JSON.stringify(data));}catch(e){}};
  try {const data=JSON.parse(sessionStorage.getItem(key)||'null');if(data){if(data.IdUnidad)select.add(new Option(data.label,data.IdUnidad));fields.forEach(name=>{if(data[name]!==undefined)form.elements[name].value=data[name];});}}catch(e){}
  form.addEventListener('input',save);form.addEventListener('change',save);

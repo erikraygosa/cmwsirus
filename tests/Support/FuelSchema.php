@@ -37,6 +37,7 @@ class FuelSchema
         $db->statement("CREATE TABLE tblcargascombustible (
             IdCarga $id, FechaCarga DATE NOT NULL, FechaTrabajo DATE NOT NULL, Turno CHAR(2) NOT NULL DEFAULT 'PM',
             IdUnidad INT NOT NULL, Unidad VARCHAR(6) NOT NULL, Litros DECIMAL(11,3) NOT NULL,
+            NumeroTicket VARCHAR(50), Km INT UNSIGNED,
             IdCosto TINYINT NOT NULL DEFAULT 2, FechaPrecio DATE NOT NULL, PrecioLitro DECIMAL(9,3) NOT NULL,
             PorcDto DECIMAL(9,4) NOT NULL DEFAULT 0, Importe DECIMAL(14,2) NOT NULL,
             Observaciones VARCHAR(255), Estatus CHAR(1) NOT NULL DEFAULT 'A', ControlDuplicado TINYINT DEFAULT 1,

@@ -20,6 +20,7 @@ beforeEach(function () {
     $this->input = [
         'FechaCarga' => '2026-02-10', 'FechaTrabajo' => '2026-01-31', 'Turno' => 'PM',
         'IdUnidad' => 1, 'Litros' => '80.001', 'Observaciones' => 'Prueba', 'TokenRegistro' => (string) Str::uuid(),
+        'NumeroTicket' => '000123', 'Km' => null,
     ];
 });
 
@@ -29,6 +30,107 @@ it('uses charge date rather than work date and decimal half up rounding', functi
         ->and(Decimal::normalize((string) $row->PrecioLitro))->toBe('25.123')
         ->and(Decimal::normalize((string) $row->Importe, 2))->toBe('2009.87')
         ->and(Decimal::amount('0.001', '25.000', '0'))->toBe('0.03');
+});
+
+it('captures ticket text with optional kilometres and retries without another charge', function (?int $km) {
+    $this->seed(CombustiblePermissionSeeder::class);
+    $user = User::factory()->create();
+    $user->givePermissionTo(['combustible_ver', 'combustible_crear']);
+    $input = array_replace($this->input, ['Km' => $km]);
+    if ($km === null) {
+        unset($input['Km']);
+    }
+    $this->actingAs($user)->postJson('/combustible/cargas', $input)->assertOk();
+    $this->postJson('/combustible/cargas', $input)->assertOk();
+    $row = $this->db->table('tblcargascombustible')->first();
+    expect($this->db->table('tblcargascombustible')->count())->toBe(1)
+        ->and($row->NumeroTicket)->toBe('000123')
+        ->and($row->Km === null ? null : (int) $row->Km)->toBe($km);
+    $intent = app(Journal::class)->read($this->db, $input['TokenRegistro']);
+    expect($intent['entries'][0]['after']['NumeroTicket'])->toBe('000123')
+        ->and($intent['entries'][0]['after']['Km'])->toBe($km);
+})->with(['omitido' => [null], 'cero' => [0], 'lectura' => [125678]]);
+
+it('validates the required ticket and optional unsigned whole kilometres', function () {
+    $this->seed(CombustiblePermissionSeeder::class);
+    $user = User::factory()->create();
+    $user->givePermissionTo(['combustible_ver', 'combustible_crear']);
+    $this->actingAs($user);
+    foreach ([null, '', str_repeat('1', 51), 'Ticket😀'] as $ticket) {
+        $this->postJson('/combustible/cargas', array_replace($this->input, ['NumeroTicket' => $ticket]))
+            ->assertUnprocessable()->assertJsonValidationErrors('NumeroTicket');
+    }
+    foreach ([-1, '1.5', 'abc', '4294967296'] as $km) {
+        $this->postJson('/combustible/cargas', array_replace($this->input, ['Km' => $km]))
+            ->assertUnprocessable()->assertJsonValidationErrors('Km');
+    }
+    expect($this->db->table('tblcargascombustible')->count())->toBe(0);
+});
+
+it('edits ticket and kilometres and can clear the optional reading without repricing', function () {
+    $this->seed(CombustiblePermissionSeeder::class);
+    $user = User::factory()->create();
+    $user->givePermissionTo(['combustible_ver', 'combustible_crear', 'combustible_editar']);
+    $this->actingAs($user)->postJson('/combustible/cargas', $this->input)->assertOk();
+    $row = $this->db->table('tblcargascombustible')->first();
+    $edit = array_replace($this->input, [
+        'NumeroTicket' => '000456', 'Km' => 145678,
+        'Operacion' => (string) Str::uuid(), 'Version' => $this->service->version($row),
+    ]);
+    unset($edit['TokenRegistro']);
+    $this->putJson('/combustible/cargas/'.$row->IdCarga, $edit)->assertOk();
+    $changed = $this->db->table('tblcargascombustible')->first();
+    expect($changed->NumeroTicket)->toBe('000456')->and((int) $changed->Km)->toBe(145678)
+        ->and($changed->Importe)->toBe($row->Importe)->and($changed->PrecioLitro)->toBe($row->PrecioLitro);
+    $this->get('/combustible/cargas/'.$row->IdCarga.'/editar')->assertOk()->assertSee('value="000456"', false)
+        ->assertSee('value="145678"', false);
+    $this->get('/combustible?desde=2026-02-01&hasta=2026-02-28')->assertOk()->assertSee('000456')->assertSee('145678');
+    $this->putJson('/combustible/cargas/'.$row->IdCarga, array_replace($edit, [
+        'Km' => null, 'Operacion' => (string) Str::uuid(), 'Version' => $this->service->version($changed),
+    ]))->assertOk();
+    expect($this->db->table('tblcargascombustible')->value('Km'))->toBeNull();
+});
+
+it('exports ticket as text and kilometres without adding them to fuel totals', function () {
+    $row = $this->service->create(array_replace($this->input, ['NumeroTicket' => '=1+1', 'Km' => 125678]), $this->actor);
+    $reports = app(Reports::class);
+    $totals = ['Litros' => '80.001', 'Importe' => '2009.87'];
+    $file = $reports->excel([$row], $totals);
+    $zip = new ZipArchive;
+    expect($zip->open($file))->toBeTrue();
+    $xml = $zip->getFromName('xl/worksheets/sheet1.xml');
+    expect($xml)->toContain('Ticket', '>Km<', '=1+1', '<c t="n"><v>125678</v></c>')->not->toContain('<f>');
+    $sheet = simplexml_load_string($xml);
+    expect((string) $sheet->sheetData->row[1]->c[1]['t'])->toBe('inlineStr')
+        ->and((string) $sheet->sheetData->row[2]->c[7]->v)->toBe('80.001')
+        ->and((string) $sheet->sheetData->row[2]->c[10]->v)->toBe('2009.87');
+    $zip->close();
+    unlink($file);
+    $pdf = view('combustible.pdf', ['rows' => [$row], 'totals' => $totals,
+        'filters' => ['desde' => '2026-02-01', 'hasta' => '2026-02-28', 'tipo_fecha' => 'carga']])->render();
+    expect($pdf)->toContain('<th>Ticket</th>', '<th>Km</th>', '=1+1', '125678');
+});
+
+it('previews and adds only missing capture columns while preserving historical rows', function () {
+    $row = $this->service->create($this->input, $this->actor);
+    $schema = $this->db->getSchemaBuilder();
+    // Sólo la conexión del fixture aislado; nunca una conexión operativa.
+    $schema->table('tblcargascombustible', fn ($table) => $table->dropColumn(['NumeroTicket', 'Km']));
+    $this->artisan('combustible:actualizar-captura')->expectsOutputToContain('Revisión sin cambios')->assertSuccessful();
+    expect($schema->hasColumn('tblcargascombustible', 'NumeroTicket'))->toBeFalse();
+    $this->artisan('combustible:actualizar-captura', ['--aplicar' => true])->assertSuccessful();
+    $historical = $this->db->table('tblcargascombustible')->first();
+    expect($historical->IdCarga)->toBe($row->IdCarga)->and($historical->TokenRegistro)->toBe($row->TokenRegistro)
+        ->and($historical->Importe)->toBe($row->Importe)
+        ->and($historical->NumeroTicket)->toBeNull()->and($historical->Km)->toBeNull();
+    $this->artisan('combustible:actualizar-captura', ['--aplicar' => true])
+        ->expectsOutputToContain('ya están disponibles')->assertSuccessful();
+    $this->db->table('tblcargascombustible')->update(['NumeroTicket' => 'YA-EXISTE']);
+    $schema->table('tblcargascombustible', fn ($table) => $table->dropColumn('Km'));
+    $this->artisan('combustible:actualizar-captura', ['--aplicar' => true])->assertSuccessful();
+    expect($this->db->table('tblcargascombustible')->value('NumeroTicket'))->toBe('YA-EXISTE')
+        ->and($schema->hasColumn('tblcargascombustible', 'Km'))->toBeTrue();
+    expect($this->db->table('tblcargascombustible')->count())->toBe(1);
 });
 
 it('blocks missing prices, inactive units, unknown discount convention and overflow', function () {
@@ -416,20 +518,20 @@ it('conditional update ensures only one of two concurrent writes on the same row
     $row = $this->service->create($this->input, $this->actor);
     $version = $this->service->version($row);
     $cancelArgs = ['Operacion' => (string) Str::uuid(), 'Version' => $version, 'MotivoCancelacion' => 'Error de captura'];
-    $editArgs   = ['Operacion' => (string) Str::uuid(), 'Version' => $version,
+    $editArgs = ['Operacion' => (string) Str::uuid(), 'Version' => $version,
         'IdUnidad' => $this->input['IdUnidad'], 'FechaCarga' => $this->input['FechaCarga'],
         'FechaTrabajo' => '2026-02-11', 'Turno' => $this->input['Turno'],
         'Litros' => $this->input['Litros'], 'Observaciones' => null];
     $cancelData = base64_encode(json_encode(['id' => $row->IdCarga, 'input' => $cancelArgs], JSON_THROW_ON_ERROR));
-    $editData   = base64_encode(json_encode(['id' => $row->IdCarga, 'input' => $editArgs], JSON_THROW_ON_ERROR));
+    $editData = base64_encode(json_encode(['id' => $row->IdCarga, 'input' => $editArgs], JSON_THROW_ON_ERROR));
     $pCancel = new Symfony\Component\Process\Process(['php', __DIR__.'/../Support/fuel-worker.php', 'cancel', $cancelData]);
-    $pEdit   = new Symfony\Component\Process\Process(['php', __DIR__.'/../Support/fuel-worker.php', 'edit',   $editData]);
+    $pEdit = new Symfony\Component\Process\Process(['php', __DIR__.'/../Support/fuel-worker.php', 'edit',   $editData]);
     $pCancel->start();
     $pEdit->start();
     $pCancel->wait();
     $pEdit->wait();
     $cancelOk = $pCancel->getExitCode() === 0;
-    $editOk   = $pEdit->getExitCode() === 0;
+    $editOk = $pEdit->getExitCode() === 0;
     // Exactamente uno debe haber ganado la carrera; el otro debe haber recibido RuntimeException.
     expect($cancelOk xor $editOk)->toBeTrue(
         'cancel: '.$pCancel->getErrorOutput().' / edit: '.$pEdit->getErrorOutput()

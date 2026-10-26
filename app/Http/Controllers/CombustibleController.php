@@ -241,6 +241,8 @@ class CombustibleController extends Controller
         return $request->validate([
             'FechaCarga' => ['required', 'date_format:Y-m-d'], 'FechaTrabajo' => ['required', 'date_format:Y-m-d'],
             'Turno' => ['required', Rule::in(['AM', 'PM'])], 'IdUnidad' => ['required', 'integer', 'min:1'],
+            'NumeroTicket' => ['required', 'string', 'max:50', $this->latin1()],
+            'Km' => ['nullable', 'integer', 'min:0', 'max:4294967295'],
             'Litros' => $this->litres(), 'Observaciones' => ['nullable', 'string', 'max:255', $this->latin1()],
             ...($editing ? ['Operacion' => ['required', 'uuid'], 'Version' => ['required', 'size:64']] : ['TokenRegistro' => ['required', 'uuid']]),
         ]);
