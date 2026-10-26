@@ -12,8 +12,21 @@ $service = app(App\Services\Combustible\FuelService::class);
 $input = json_decode(base64_decode($argv[2]), true, 512, JSON_THROW_ON_ERROR);
 $actor = ['id' => '123', 'name' => 'Prueba concurrente'];
 try {
-    $result = $argv[1] === 'notice' ? $service->notice($actor) : $service->create($input, $actor)->IdCarga;
-    echo json_encode(['ok' => $result], JSON_THROW_ON_ERROR);
+    if ($argv[1] === 'notice') {
+        $result = $service->notice($actor);
+        echo json_encode(['ok' => $result], JSON_THROW_ON_ERROR);
+    } elseif ($argv[1] === 'cancel') {
+        $data = json_decode(base64_decode($argv[2]), true, 512, JSON_THROW_ON_ERROR);
+        $service->cancel((int) $data['id'], $data['input'], $actor);
+        echo json_encode(['ok' => 'cancelled'], JSON_THROW_ON_ERROR);
+    } elseif ($argv[1] === 'edit') {
+        $data = json_decode(base64_decode($argv[2]), true, 512, JSON_THROW_ON_ERROR);
+        $service->edit((int) $data['id'], $data['input'], $actor);
+        echo json_encode(['ok' => 'edited'], JSON_THROW_ON_ERROR);
+    } else {
+        $result = $service->create($input, $actor)->IdCarga;
+        echo json_encode(['ok' => $result], JSON_THROW_ON_ERROR);
+    }
 } catch (Illuminate\Validation\ValidationException $e) {
     echo json_encode(['duplicate' => true]);
 } catch (Throwable $e) {

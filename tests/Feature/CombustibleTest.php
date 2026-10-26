@@ -376,7 +376,7 @@ it('uses zero only without price history and preserves an undefined stored disco
     expect(fn () => $this->service->create($this->input, $this->actor))->toThrow(ValidationException::class);
 });
 
-it('never retries a statement on a new MySQL session after losing table locks', function () {
+it('never retries a statement on a new connection after losing the session', function () {
     if (getenv('FUEL_MYSQL_TEST') !== '1') {
         $this->markTestSkipped('Requiere una sesión MySQL 5.7 real.');
     }
@@ -392,6 +392,54 @@ it('never retries a statement on a new MySQL session after losing table locks', 
     })->toThrow(RuntimeException::class);
     expect($observer->table('tblexcepciones')->where('Excepcion', 'NO_DEBE_EXISTIR')->count())->toBe(0);
     DB::purge('fuel_observer');
+});
+
+it('conditional write returns zero affected rows when the row was modified between the read and the write', function () {
+    $row = $this->service->create($this->input, $this->actor);
+    $before = (array) $row;
+    // El WHERE del before state debe coincidir antes de cualquier modificación externa.
+    expect($this->db->table('tblcargascombustible')->where($before)->count())->toBe(1);
+    // Simular modificación concurrente que ocurre entre la comprobación del before y la escritura.
+    $this->db->table('tblcargascombustible')->where('IdCarga', $row->IdCarga)->update(['FechaCarga' => '2026-03-15']);
+    // La escritura condicional retorna 0 porque el before state ya no coincide.
+    $affected = $this->db->table('tblcargascombustible')->where($before)->update(['Estatus' => 'C', 'ControlDuplicado' => null]);
+    expect($affected)->toBe(0);
+    // La modificación concurrente permanece; la escritura no fue aplicada.
+    $final = $this->db->table('tblcargascombustible')->where('IdCarga', $row->IdCarga)->first();
+    expect($final->FechaCarga)->toBe('2026-03-15')->and($final->Estatus)->toBe('A');
+});
+
+it('conditional update ensures only one of two concurrent writes on the same row succeeds', function () {
+    if (getenv('FUEL_MYSQL_TEST') !== '1') {
+        $this->markTestSkipped('Requiere MySQL 5.7 del contenedor de integración.');
+    }
+    $row = $this->service->create($this->input, $this->actor);
+    $version = $this->service->version($row);
+    $cancelArgs = ['Operacion' => (string) Str::uuid(), 'Version' => $version, 'MotivoCancelacion' => 'Error de captura'];
+    $editArgs   = ['Operacion' => (string) Str::uuid(), 'Version' => $version,
+        'IdUnidad' => $this->input['IdUnidad'], 'FechaCarga' => $this->input['FechaCarga'],
+        'FechaTrabajo' => '2026-02-11', 'Turno' => $this->input['Turno'],
+        'Litros' => $this->input['Litros'], 'Observaciones' => null];
+    $cancelData = base64_encode(json_encode(['id' => $row->IdCarga, 'input' => $cancelArgs], JSON_THROW_ON_ERROR));
+    $editData   = base64_encode(json_encode(['id' => $row->IdCarga, 'input' => $editArgs], JSON_THROW_ON_ERROR));
+    $pCancel = new Symfony\Component\Process\Process(['php', __DIR__.'/../Support/fuel-worker.php', 'cancel', $cancelData]);
+    $pEdit   = new Symfony\Component\Process\Process(['php', __DIR__.'/../Support/fuel-worker.php', 'edit',   $editData]);
+    $pCancel->start();
+    $pEdit->start();
+    $pCancel->wait();
+    $pEdit->wait();
+    $cancelOk = $pCancel->getExitCode() === 0;
+    $editOk   = $pEdit->getExitCode() === 0;
+    // Exactamente uno debe haber ganado la carrera; el otro debe haber recibido RuntimeException.
+    expect($cancelOk xor $editOk)->toBeTrue(
+        'cancel: '.$pCancel->getErrorOutput().' / edit: '.$pEdit->getErrorOutput()
+    );
+    $final = $this->db->table('tblcargascombustible')->where('IdCarga', $row->IdCarga)->first();
+    if ($cancelOk) {
+        expect($final->Estatus)->toBe('C')->and($final->FechaTrabajo)->toBe('2026-02-01');
+    } else {
+        expect($final->Estatus)->toBe('A')->and($final->FechaTrabajo)->toBe('2026-02-11');
+    }
 });
 
 it('revalidates pending deletion when newer prices or cancelled references appear', function (string $dependency) {

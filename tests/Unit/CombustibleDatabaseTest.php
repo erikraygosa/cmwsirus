@@ -126,6 +126,8 @@ it('runs the callback directly with the connection for every action without acqu
     $connection = Mockery::mock(Connection::class);
     $connection->shouldNotReceive('statement')->withArgs(fn ($sql) => str_starts_with($sql, 'LOCK TABLES'));
     $connection->shouldNotReceive('statement')->with('UNLOCK TABLES');
+    // Devolver 'sqlite' omite la prevención de reconexión (probada en tests de integración MySQL).
+    $connection->shouldReceive('getDriverName')->andReturn('sqlite');
     $service = Mockery::mock(Database::class)->makePartial();
     $service->shouldReceive('connection')->once()->andReturn($connection);
 
@@ -134,6 +136,7 @@ it('runs the callback directly with the connection for every action without acqu
 
 it('propagates callback exceptions without wrapping them', function () {
     $connection = Mockery::mock(Connection::class);
+    $connection->shouldReceive('getDriverName')->andReturn('sqlite');
     $service = Mockery::mock(Database::class)->makePartial();
     $service->shouldReceive('connection')->once()->andReturn($connection);
     $error = new RuntimeException('Error en el callback');

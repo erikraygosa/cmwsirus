@@ -43,6 +43,19 @@ class Database
         // con varias tablas bloqueadas a la vez, un único request largo bloquea el módulo entero.
         // El journal de escritura anticipada y las restricciones de unicidad garantizan idempotencia,
         // detección de conflictos y recuperación sin esa serialización.
-        return $callback($this->connection());
+        $db = $this->connection();
+        $mysql = $db->getDriverName() !== 'sqlite';
+        // Impide que Laravel reintente sentencias en una sesión nueva si se pierde la conexión.
+        // MyISAM no tiene rollback: una sentencia reintentada puede duplicar escrituras.
+        if ($mysql) {
+            $db->setReconnector(fn () => throw new RuntimeException('Se perdió la conexión durante la operación. Reintente con el mismo identificador.'));
+        }
+        try {
+            return $callback($db);
+        } finally {
+            if ($mysql) {
+                $db->setReconnector(fn ($connection) => DB::reconnect($connection->getNameWithReadWriteType()));
+            }
+        }
     }
 }

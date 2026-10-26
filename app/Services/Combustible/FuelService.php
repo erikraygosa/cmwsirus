@@ -6,6 +6,7 @@ use Illuminate\Database\Connection;
 use Illuminate\Database\QueryException;
 use Illuminate\Validation\ValidationException;
 use RuntimeException;
+use App\Services\Combustible\LockUnavailable;
 
 class FuelService
 {
@@ -280,66 +281,93 @@ class FuelService
     private function operation(string $id, string $action, array $input, array $actor, callable $plan): void
     {
         $this->database->locked(function ($db) use ($id, $action, $input, $actor, $plan) {
-            $fingerprint = $this->version(['input' => $input, 'user' => $actor['id'], 'action' => $action]);
-            $header = $this->journal->header($db, $id);
-            if ($header && ! hash_equals($header['fingerprint'], $fingerprint)) {
-                $this->invalid('Operacion', 'El identificador pertenece a otros valores. Recupere el envío original o descarte el borrador.');
+            $mysql = $db->getDriverName() !== 'sqlite';
+            // Serializa solicitudes concurrentes con el mismo identificador (doble envío, reintento
+            // de red que llega antes de que termine el primero). El lock es por token, no por tabla.
+            if ($mysql) {
+                $lock = $db->selectOne('SELECT GET_LOCK(?, 3) AS acquired', ['combustible:'.$id]);
+                if (! $lock->acquired) {
+                    throw new LockUnavailable('Solicitud duplicada en curso para este identificador. Reintente en unos segundos con el mismo identificador.');
+                }
             }
-            $this->operationTime = $header['at'] ?? now(config('combustible.timezone'))->format('Y-m-d H:i:s');
             try {
-                $intent = $this->journal->read($db, $id);
-                if ($intent && ! hash_equals($intent['fingerprint'], $fingerprint)) {
-                    $this->invalid('Operacion', 'El identificador ya pertenece a otra captura o a otros valores. Recupere el envío original.');
+                $fingerprint = $this->version(['input' => $input, 'user' => $actor['id'], 'action' => $action]);
+                $header = $this->journal->header($db, $id);
+                if ($header && ! hash_equals($header['fingerprint'], $fingerprint)) {
+                    $this->invalid('Operacion', 'El identificador pertenece a otros valores. Recupere el envío original o descarte el borrador.');
                 }
-                if ($intent && $this->journal->done($db, $id)) {
-                    return;
-                }
-                if (! $intent) {
-                    $intent = ['fingerprint' => $fingerprint, 'actor' => $actor, 'action' => $action, 'input' => $input, 'entries' => $plan($db)];
-                    $this->journal->begin($db, $id, ['fingerprint' => $fingerprint, 'at' => $this->operationTime], $action, $actor);
-                    $this->journal->write($db, $id, $action, $intent, $actor);
-                }
-                foreach ($intent['entries'] as $index => $entry) {
-                    $step = hash('md5', $id.':'.$index);
-                    if ($this->journal->done($db, $step)) {
-                        if (! $this->matches($db->table($entry['table'])->where($entry['key'])->first(), $entry['after'])) {
-                            throw new RuntimeException('Operación parcial '.$id.': un cambio completado fue modificado externamente. Requiere conciliación.');
-                        }
+                $this->operationTime = $header['at'] ?? now(config('combustible.timezone'))->format('Y-m-d H:i:s');
+                try {
+                    $intent = $this->journal->read($db, $id);
+                    if ($intent && ! hash_equals($intent['fingerprint'], $fingerprint)) {
+                        $this->invalid('Operacion', 'El identificador ya pertenece a otra captura o a otros valores. Recupere el envío original.');
+                    }
+                    if ($intent && $this->journal->done($db, $id)) {
+                        return;
+                    }
+                    if (! $intent) {
+                        $intent = ['fingerprint' => $fingerprint, 'actor' => $actor, 'action' => $action, 'input' => $input, 'entries' => $plan($db)];
+                        $this->journal->begin($db, $id, ['fingerprint' => $fingerprint, 'at' => $this->operationTime], $action, $actor);
+                        $this->journal->write($db, $id, $action, $intent, $actor);
+                    }
+                    foreach ($intent['entries'] as $index => $entry) {
+                        $step = hash('md5', $id.':'.$index);
+                        if ($this->journal->done($db, $step)) {
+                            if (! $this->matches($db->table($entry['table'])->where($entry['key'])->first(), $entry['after'])) {
+                                throw new RuntimeException('Operación parcial '.$id.': un cambio completado fue modificado externamente. Requiere conciliación.');
+                            }
 
-                        continue;
-                    }
-                    $this->journal->write($db, $step, $entry['action'], ['operation' => $id, 'actor' => $intent['actor'], ...$entry], $intent['actor']);
-                    $query = $db->table($entry['table'])->where($entry['key']);
-                    $current = $query->first();
-                    if (! $this->matches($current, $entry['after'])) {
-                        if (! $this->matches($current, $entry['before'])) {
-                            throw new RuntimeException('Operación parcial '.$id.': el registro cambió externamente. Requiere conciliación antes de reintentar.');
+                            continue;
                         }
-                        $this->validatePendingReferences($db, $entry);
-                        try {
-                            if ($entry['after'] === null) {
-                                $query->delete();
-                            } elseif ($entry['before'] === null) {
-                                $db->table($entry['table'])->insert($entry['after']);
-                            } else {
-                                // Cancelación: todos sus campos se escriben juntos, una única sentencia.
-                                $query->update($entry['after']);
+                        $this->journal->write($db, $step, $entry['action'], ['operation' => $id, 'actor' => $intent['actor'], ...$entry], $intent['actor']);
+                        $current = $db->table($entry['table'])->where($entry['key'])->first();
+                        if (! $this->matches($current, $entry['after'])) {
+                            if (! $this->matches($current, $entry['before'])) {
+                                throw new RuntimeException('Operación parcial '.$id.': el registro cambió externamente. Requiere conciliación antes de reintentar.');
                             }
-                        } catch (QueryException $e) {
-                            if ($this->isDuplicate($e)) {
-                                $this->invalid('Litros', 'Ya existe una carga activa idéntica o el token está utilizado. No se insertó otra carga. Identificador: '.$id);
+                            $this->validatePendingReferences($db, $entry);
+                            try {
+                                if ($entry['after'] === null) {
+                                    // DELETE atómico: WHERE incluye el estado previo completo para detectar
+                                    // modificaciones concurrentes entre la lectura y la escritura.
+                                    $affected = $db->table($entry['table'])->where($entry['before'])->delete();
+                                    if ($affected === 0) {
+                                        throw new RuntimeException('Operación parcial '.$id.': el registro fue modificado entre la lectura y la escritura. Requiere conciliación.');
+                                    }
+                                } elseif ($entry['before'] === null) {
+                                    $db->table($entry['table'])->insert($entry['after']);
+                                } else {
+                                    // UPDATE atómico: WHERE incluye el estado previo completo; si otra
+                                    // escritura ganó la carrera, affected = 0 y se lanza excepción.
+                                    $affected = $db->table($entry['table'])->where($entry['before'])->update($entry['after']);
+                                    if ($affected === 0) {
+                                        throw new RuntimeException('Operación parcial '.$id.': el registro fue modificado entre la lectura y la escritura. Requiere conciliación.');
+                                    }
+                                }
+                            } catch (QueryException $e) {
+                                if ($this->isDuplicate($e)) {
+                                    $this->invalid('Litros', 'Ya existe una carga activa idéntica o el token está utilizado. No se insertó otra carga. Identificador: '.$id);
+                                }
+                                throw $e;
                             }
-                            throw $e;
+                            if (! $this->matches($db->table($entry['table'])->where($entry['key'])->first(), $entry['after'])) {
+                                throw new RuntimeException('No se verificó la escritura. Reintente con el identificador '.$id);
+                            }
                         }
-                        if (! $this->matches($db->table($entry['table'])->where($entry['key'])->first(), $entry['after'])) {
-                            throw new RuntimeException('No se verificó la escritura. Reintente con el identificador '.$id);
-                        }
+                        $this->journal->finish($db, $step, $entry['action'], $intent['actor']);
                     }
-                    $this->journal->finish($db, $step, $entry['action'], $intent['actor']);
+                    $this->journal->finish($db, $id, $action, $intent['actor']);
+                } finally {
+                    $this->operationTime = null;
                 }
-                $this->journal->finish($db, $id, $action, $intent['actor']);
             } finally {
-                $this->operationTime = null;
+                if ($mysql) {
+                    try {
+                        $db->selectOne('SELECT RELEASE_LOCK(?)', ['combustible:'.$id]);
+                    } catch (\Throwable) {
+                        // Conexión caída; MySQL libera los named locks al cerrar la sesión.
+                    }
+                }
             }
         }, $action);
     }
