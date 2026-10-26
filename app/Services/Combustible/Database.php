@@ -3,6 +3,7 @@
 namespace App\Services\Combustible;
 
 use Illuminate\Database\Connection;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
@@ -34,18 +35,29 @@ class Database
         return $connection;
     }
 
-    public function locked(callable $callback): mixed
+    public function locked(callable $callback, string $action = 'CREAR'): mixed
     {
+        // No pedir WRITE sobre precios al capturar ni bloquear avisos ajenos a la operación.
+        $tables = match ($action) {
+            'CREAR', 'EDITAR' => 'tblcargascombustible WRITE, tblcostos READ, catunidades READ, tblexcepciones WRITE',
+            'CANCELAR' => 'tblcargascombustible WRITE, tblexcepciones WRITE',
+            'PRECIO' => 'tblcargascombustible WRITE, tblcostos WRITE, tblavisospreciodiesel WRITE, tblexcepciones WRITE',
+            'ELIMINAR_PRECIO' => 'tblcargascombustible READ, tblcostos WRITE, tblexcepciones WRITE',
+            default => throw new \InvalidArgumentException('Acción de combustible desconocida.'),
+        };
         $db = $this->connection();
         $mysql = $db->getDriverName() !== 'sqlite';
         if ($mysql) {
-            // MyISAM no tiene rollback. Incluimos todas las tablas utilizadas y no usamos alias.
+            // MyISAM no tiene rollback. Proteger juntas todas las tablas utilizadas.
             try {
-                $db->statement('LOCK TABLES tblcargascombustible WRITE, tblcostos WRITE, catunidades READ, tblavisospreciodiesel WRITE, tblexcepciones WRITE');
+                $db->statement('LOCK TABLES '.$tables);
             } catch (\Throwable $e) {
                 // Si no se adquirieron todos, cerrar la sesión libera cualquier bloqueo parcial.
                 // El callback aún no comenzó y no se ha realizado ninguna escritura de negocio.
                 $db->disconnect();
+                if ($e instanceof QueryException && (int) ($e->errorInfo[1] ?? 0) === 1205) {
+                    throw new LockUnavailable('No se adquirieron los bloqueos; este intento no inició las escrituras.', 0, $e);
+                }
                 throw $e;
             }
             // Una reconexión perdería LOCK TABLES; nunca reintentar una sentencia sin su bloqueo.

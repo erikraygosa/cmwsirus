@@ -266,6 +266,13 @@ class CombustibleController extends Controller
             $message = $action();
 
             return response()->json(['message' => $message]);
+        } catch (\App\Services\Combustible\LockUnavailable $e) {
+            report($e);
+
+            return response()->json([
+                'message' => 'La base está ocupada por un bloqueo. Este intento no inició escrituras. Conserve los datos y reintente el mismo envío cuando se libere.',
+                'operacion' => $request->input('Operacion', $request->input('TokenRegistro')),
+            ], 503)->header('Retry-After', '10');
         } catch (ValidationException|\Illuminate\Auth\Access\AuthorizationException|\Symfony\Component\HttpKernel\Exception\HttpExceptionInterface $e) {
             throw $e;
         } catch (\Throwable $e) {

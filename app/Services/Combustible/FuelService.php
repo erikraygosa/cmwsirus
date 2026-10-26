@@ -341,7 +341,7 @@ class FuelService
             } finally {
                 $this->operationTime = null;
             }
-        });
+        }, $action);
     }
 
     private function validatePendingReferences(Connection $db, array $entry): void

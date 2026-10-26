@@ -465,6 +465,38 @@ it('uses the daily unique key without requesting locks on operational tables', f
     expect($this->db->table('tblavisospreciodiesel')->value('Respuesta'))->toBe('OMITIDO');
 });
 
+it('keeps the original token and reports no new writes only when acquisition failed', function (bool $acquisition) {
+    $this->seed(CombustiblePermissionSeeder::class);
+    $user = User::factory()->create();
+    $user->givePermissionTo(['combustible_ver', 'combustible_crear']);
+    if ($acquisition) {
+        $database = Mockery::mock(\App\Services\Combustible\Database::class);
+        $database->shouldReceive('locked')->once()->with(Mockery::type('callable'), 'CREAR')
+            ->andThrow(new \App\Services\Combustible\LockUnavailable('No se adquirieron los bloqueos.'));
+        $this->app->instance(\App\Services\Combustible\Database::class, $database);
+    } else {
+        $journal = new class extends Journal
+        {
+            public function write(\Illuminate\Database\Connection $db, string $id, string $action, array $data, array $actor): void
+            {
+                $cause = new PDOException('Lock wait timeout exceeded');
+                $cause->errorInfo = ['HY000', 1205, 'Lock wait timeout exceeded'];
+                throw new \Illuminate\Database\QueryException('fuel_test', 'INSERT audit fragment', [], $cause);
+            }
+        };
+        $this->app->instance(Journal::class, $journal);
+    }
+    $response = $this->actingAs($user)->postJson('/combustible/cargas', $this->input)
+        ->assertStatus(503)->assertJsonPath('operacion', $this->input['TokenRegistro']);
+    if ($acquisition) {
+        $response->assertHeader('Retry-After', '10')->assertJsonPath('message', 'La base está ocupada por un bloqueo. Este intento no inició escrituras. Conserve los datos y reintente el mismo envío cuando se libere.');
+    } else {
+        $response->assertSee('Puede existir una escritura parcial.')->assertDontSee('Este intento no inició escrituras.');
+    }
+    expect($this->db->table('tblcargascombustible')->count())->toBe(0)
+        ->and($this->db->table('tblexcepciones')->count())->toBe($acquisition ? 0 : 1);
+})->with([true, false]);
+
 it('shows a controlled unavailable response when MySQL metadata waits expire', function () {
     $this->seed(CombustiblePermissionSeeder::class);
     $user = User::factory()->create();

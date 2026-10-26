@@ -122,6 +122,57 @@ it('aggregates MySQL totals in the server and preserves decimal precision and fi
         ->and($query->getBindings())->toBe(['2026-01-01', '2026-01-31', 'PM']);
 });
 
+it('protects only the tables needed by each operation and always releases them', function (string $action, string $tables) {
+    $connection = Mockery::mock(Connection::class);
+    $connection->shouldReceive('getDriverName')->andReturn('mysql');
+    $connection->shouldReceive('statement')->once()->with('LOCK TABLES '.$tables)->ordered()->andReturn(true);
+    $connection->shouldReceive('statement')->once()->with('UNLOCK TABLES')->ordered()->andReturn(true);
+    $connection->shouldReceive('setReconnector')->twice();
+    $service = Mockery::mock(Database::class)->makePartial();
+    $service->shouldReceive('connection')->once()->andReturn($connection);
+
+    expect($service->locked(fn ($db) => $db === $connection, $action))->toBeTrue();
+})->with([
+    ['CREAR', 'tblcargascombustible WRITE, tblcostos READ, catunidades READ, tblexcepciones WRITE'],
+    ['EDITAR', 'tblcargascombustible WRITE, tblcostos READ, catunidades READ, tblexcepciones WRITE'],
+    ['CANCELAR', 'tblcargascombustible WRITE, tblexcepciones WRITE'],
+    ['PRECIO', 'tblcargascombustible WRITE, tblcostos WRITE, tblavisospreciodiesel WRITE, tblexcepciones WRITE'],
+    ['ELIMINAR_PRECIO', 'tblcargascombustible READ, tblcostos WRITE, tblexcepciones WRITE'],
+]);
+
+it('distinguishes acquisition timeouts from errors after the callback has started', function (bool $acquisition) {
+    $cause = new PDOException('Lock wait timeout exceeded');
+    $cause->errorInfo = ['HY000', 1205, 'Lock wait timeout exceeded'];
+    $error = new \Illuminate\Database\QueryException('fuel_test', $acquisition ? 'LOCK TABLES' : 'INSERT', [], $cause);
+    $connection = Mockery::mock(Connection::class);
+    $connection->shouldReceive('getDriverName')->andReturn('mysql');
+    $lock = $connection->shouldReceive('statement')->once()->withArgs(fn ($sql) => str_starts_with($sql, 'LOCK TABLES '));
+    if ($acquisition) {
+        $lock->andThrow($error);
+        $connection->shouldReceive('disconnect')->once();
+        $connection->shouldNotReceive('setReconnector');
+    } else {
+        $lock->andReturn(true);
+        $connection->shouldReceive('setReconnector')->twice();
+        $connection->shouldReceive('statement')->once()->with('UNLOCK TABLES')->andReturn(true);
+    }
+    $service = Mockery::mock(Database::class)->makePartial();
+    $service->shouldReceive('connection')->once()->andReturn($connection);
+    $executed = false;
+    $caught = null;
+    try {
+        $service->locked(function () use (&$executed, $error) {
+            $executed = true;
+            throw $error;
+        });
+    } catch (Throwable $e) {
+        $caught = $e;
+    }
+    expect($caught)->not->toBeNull()
+        ->and($caught::class)->toBe($acquisition ? \App\Services\Combustible\LockUnavailable::class : $error::class)
+        ->and($executed)->toBe(! $acquisition);
+})->with([true, false]);
+
 it('disconnects when table acquisition fails before executing business writes', function () {
     $connection = Mockery::mock(Connection::class);
     $connection->shouldReceive('getDriverName')->andReturn('mysql');
