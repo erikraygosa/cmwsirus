@@ -73,7 +73,14 @@ El módulo está en `/combustible` y utiliza el checkout de este proyecto (`cmws
 
 ## MyISAM, auditoría y recuperación
 
-No se utilizan transacciones, rollback ni claves foráneas. Las operaciones de cargas, precios y recuperación toman `LOCK TABLES` sobre las tablas utilizadas por la acción y liberan en `finally`. Capturar/editar solicita cargas y auditoría en WRITE, precios y unidades en READ, sin bloquear avisos. Cancelar sólo bloquea cargas y auditoría en WRITE. Guardar precios bloquea cargas, precios, avisos y auditoría en WRITE. Eliminar precios solicita cargas en READ, precios y auditoría en WRITE. La recuperación conserva los mismos bloqueos de la acción original. Dentro del bloqueo se desactiva la reconexión automática de Laravel: si cae la sesión, se exige reintentar la operación completa para no continuar sin los bloqueos. Las claves únicas siguen siendo la defensa contra duplicados. Un recálculo grande o la fragmentación de auditoría puede bloquear escrituras de Delphi; planificar lotes y ventanas de operación. No se cambian índices existentes.
+No se utilizan transacciones, rollback ni claves foráneas. Las operaciones **no adquieren `LOCK TABLES`**; la serialización a nivel de tabla en MyISAM, combinada con las claves únicas y los hashes de versión, garantiza todos los invariantes sin bloquear lecturas ni escrituras de otros clientes:
+
+- **`uq_carga_token`** (UNIQUE `TokenRegistro`): el INSERT rechaza atómicamente un segundo intento con el mismo token; el journal reconoce el resultado ya grabado en el siguiente reintento.
+- **`uq_carga_activa`** (UNIQUE unidad/fecha/turno/litros/ControlDuplicado): duplicados de contenido son rechazados por la base incluso con tokens distintos.
+- **Hash de versión en `active()`**: editar o cancelar compara la huella del registro actual; si otro cliente modificó la fila entre la lectura y la escritura, `matches()` detecta la divergencia y retorna un error recuperable.
+- **Precio concurrente**: `validatePendingReferences()` relee el estado de precios y cargas; si cambió desde la confirmación cifrada, el guardado se rechaza antes de escribir.
+
+El journal de escritura anticipada persiste BEGIN, plan completo y confirmación de cada paso antes de ejecutar los cambios. Reintentar el mismo token recupera las etapas pendientes y verifica las escrituras sin repetirlas. Las claves únicas siguen siendo la defensa de última instancia contra duplicados. No se cambian índices existentes.
 
 Antes de escribir se persiste una cabecera BEGIN con huella y hora estable, seguida del plan completo: usuario/ID, operación, entrada, claves y valores antes/después. Cada cambio tiene sus propios fragmentos y confirmación. Los detalles se codifican como JSON ASCII (Unicode escapado, reversible) y se dividen en fragmentos de 170 bytes, con prefijo correlacionado, dentro del TINYTEXT de 255 bytes. Ningún detalle se trunca silenciosamente. `Usuario`, `Modulo` y `Excepcion` respetan VARCHAR(30).
 
@@ -129,16 +136,18 @@ La suite general conserva dos fallos anteriores en AuthenticationTest/Registrati
 
 Después de actualizar desde `origin/main`, ejecutar `php artisan config:clear`, `php artisan config:cache` y `php artisan view:cache`. Los recursos Select2 están incluidos en Git; no hace falta instalar paquetes nuevos. Mantener `COMBUSTIBLE_DB_CONNECTION=mysql_combustible`.
 
-## Esperas por bloqueos de metadatos
+## Eliminación de LOCK TABLES
 
-Un error MySQL 1205 al adquirir `LOCK TABLES` se distingue de un fallo posterior: el mensaje indica que **este intento** no inició escrituras y conserva el identificador y los datos. La desconexión libera cualquier adquisición parcial. Si un intento anterior dejó cambios, este mensaje no los descarta: se debe conservar el mismo token. Un 1205 ocurrido después de adquirir los bloqueos mantiene el aviso de posible escritura parcial. Reducir los bloqueos solicitados no libera los que ya mantenga otro cliente ni elimina la necesidad de identificar a su propietario.
+La causa raíz de las peticiones bloqueadas era `LOCK TABLES` sobre tablas MyISAM: mientras un cliente mantiene el bloqueo, **todas** las lecturas y escrituras de otros clientes sobre esas tablas quedan en espera. Con varias tablas bloqueadas a la vez, un único request lento suspendía el módulo completo para todos los usuarios.
 
-Esta reducción y la distinción entre errores anteriores/posteriores a las escrituras se verificaron con 47 pruebas aprobadas en memoria y con dobles, y dos omitidas por requerir MySQL real. Se comprobó la respuesta HTTP con el mismo token, la ausencia de escrituras cuando falla la adquisición y la advertencia de escritura parcial cuando ya existe un BEGIN. Los modos de bloqueo se verificaron con conexiones simuladas; no se validaron en un servidor MySQL real durante esta revisión ni se ejecutaron pruebas en producción.
+El módulo ya no usa `LOCK TABLES` ni `UNLOCK TABLES`. La prevención de duplicados, la detección de conflictos y la recuperación se apoyan exclusivamente en:
 
-La evidencia de producción mostró peticiones del módulo esperando `LOCK TABLES` durante muchos minutos. La instrumentación `wait/lock/metadata/sql/mdl` estaba desactivada, por lo que `sys.schema_table_lock_waits` vacío no descartaba esos bloqueos. Las sesiones en espera no identifican por sí solas a la conexión que originó el bloqueo.
+- Restricciones de unicidad de la base (INSERT falla con 1062 si ya existe el token o el contenido).
+- Hashes de versión que detectan modificaciones externas antes de escribir (editar, cancelar, precio).
+- El journal de escritura anticipada: idempotencia y recuperación sin serialización global.
 
-El servicio ahora establece `SET SESSION lock_wait_timeout = 5` al validar la conexión MySQL. Limita cada adquisición de metadatos de esta sesión, tanto en lecturas como en LOCK TABLES; no modifica la configuración global del servidor. Una sentencia que necesita varios bloqueos puede acumular varias esperas, y no es un límite universal de ejecución de SQL. Si la adquisición falla, se desconecta antes de ejecutar el callback de escrituras. Las lecturas que agotan la espera muestran una respuesta controlada 503, sin ocultar que la base sigue ocupada. Las conexiones iniciadas antes del cambio no reciben este límite retroactivamente.
+`SET SESSION lock_wait_timeout = 5` se mantiene para limitar la espera por MDL (p. ej. si un `ALTER TABLE` retiene un metadata lock); no afecta la duración de consultas normales.
 
-Para resolver una cola existente, un administrador debe verificar y cancelar únicamente las solicitudes identificadas que sigan esperando el mismo LOCK TABLES del módulo. No se deben cerrar conexiones Sleep ni transacciones de Delphi por antigüedad solamente, ni ejecutar UNLOCK TABLES desde otra conexión esperando liberar sus bloqueos. Si la cola reaparece, localizar el propietario original y coordinar con él la finalización de su operación. No se modificaron tablas, índices ni datos como parte de esta corrección.
+Un error 1205 en producción tras aplicar este cambio indicaría un `ALTER TABLE` u otro DDL en curso, no el módulo esperando `LOCK TABLES`.
 
-Validación de este ajuste: 38 pruebas aisladas aprobadas, dos omitidas por requerir MySQL real; pruebas de límite de sesión con conexiones simuladas, desconexión antes del callback al fallar LOCK TABLES y respuesta 503 de HTML/JSON. No se ejecutaron cancelaciones ni pruebas en producción desde el entorno de desarrollo.
+Validación: 45 pruebas aprobadas (5 para el nuevo comportamiento de `locked()` sin bloqueos, más las 40 anteriores), 2 omitidas por requerir MySQL real. No se ejecutaron pruebas ni cancelaciones en producción desde el entorno de desarrollo.
