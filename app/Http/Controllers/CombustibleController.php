@@ -22,7 +22,7 @@ class CombustibleController extends Controller
         $query = $this->reports->query($filters);
         $totals = $this->reports->totals($query);
         $rows = $query->orderByDesc('FechaCarga')->orderByDesc('IdCarga')->paginate(25)->withQueryString();
-        $units = $this->fuel->database->connection()->table('catunidades')->orderBy('Unidad')->get(['IdUnidad', 'Unidad', 'Estatus']);
+        $units = $this->fuel->database->connection()->table('catunidades')->where('Estatus', 'A')->orderBy('Unidad')->get(['IdUnidad', 'Unidad']);
 
         return view('combustible.index', compact('filters', 'totals', 'rows', 'units'));
     }
