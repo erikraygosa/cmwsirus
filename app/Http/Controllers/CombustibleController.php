@@ -94,7 +94,7 @@ class CombustibleController extends Controller
 
         return response()->json($this->fuel->database->connection()->table('catunidades')->where('Estatus', 'A')
             ->when($input['q'] ?? '', fn ($q, $term) => $q->where('Unidad', 'like', '%'.addcslashes($term, '%_\\').'%'))
-            ->orderBy('Unidad')->limit(50)->get(['IdUnidad', 'Unidad']));
+            ->orderBy('Unidad')->limit(300)->get(['IdUnidad', 'Unidad']));
     }
 
     public function quote(Request $request)
