@@ -720,7 +720,7 @@
                 const statusUrl = statusBase.replace('__ID__', data.sync_id);
                 pollTimer = setInterval(async () => {
                     try {
-                        const sr   = await fetch(statusUrl, { headers: { 'Accept': 'application/json' } });
+                        const sr   = await fetch(statusUrl, { credentials: 'same-origin', headers: { 'Accept': 'application/json' } });
                         const st   = await sr.json();
 
                         if (st.status === 'running') return;   // sigue corriendo
