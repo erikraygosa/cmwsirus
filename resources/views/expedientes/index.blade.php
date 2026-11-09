@@ -703,6 +703,7 @@
 
                 const res  = await fetch('{{ route("expedientes.drive.sync") }}', {
                     method: 'POST',
+                    credentials: 'same-origin',
                     headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': token, 'Accept': 'application/json' },
                     body: JSON.stringify({ carpeta_drive: carpeta, siglas: siglas }),
                 });
