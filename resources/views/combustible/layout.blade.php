@@ -23,7 +23,8 @@ window.fuelRequest = async function(url, options={}) {
  const controller=new AbortController();
  const timer=setTimeout(()=>controller.abort(),(options.method||'GET')==='GET'?10000:30000);
  try{
-  const response=await fetch(url, {...options, signal:controller.signal,headers:{'Accept':'application/json','X-CSRF-TOKEN':@json(csrf_token()), ...options.headers}});
+  const response=await fetch(url, {...options, signal:controller.signal,headers:{'Accept':'application/json','X-CSRF-TOKEN':document.querySelector('meta[name="csrf-token"]')?.content||@json(csrf_token()), ...options.headers}});
+  if(response.status===419) throw new Error('Tu sesión expiró. Recarga la página para continuar; los datos ingresados se conservan en el borrador.');
   const data=await response.json().catch(()=>({message:'Respuesta inesperada del servidor. Reintente el mismo envío.'}));
   if(!response.ok) throw new Error((Object.values(data.errors||{}).flat().join(' ')||data.message||'No se pudo completar la solicitud.')+(data.operacion?' Identificador: '+data.operacion:''));
   return data;
@@ -32,6 +33,8 @@ window.fuelRequest = async function(url, options={}) {
   throw error;
  }finally{clearTimeout(timer);}
 };
+// Mantener la sesión viva mientras la página esté abierta (ping cada 10 min).
+(()=>{const ping=()=>{if(!document.hidden)fetch(@json(route('combustible.units'))+'?q=',{headers:{'Accept':'application/json','X-Requested-With':'XMLHttpRequest'}}).catch(()=>{});};setInterval(ping,600000);})();
 document.querySelectorAll('form[data-fuel-mutation]').forEach(form=>form.addEventListener('submit',async event=>{
  event.preventDefault(); if(form.dataset.busy==='1') return;
  if(form.dataset.confirm && !confirm(form.dataset.confirm)) return;
