@@ -113,16 +113,20 @@ class accidenteImagenController extends Controller
 
 
     public function delete($id){
-
-        $imagen = AccidenteImagen::find($id); // Busca la imagen por el ID
-        if ($imagen) { // Verifica si se encontró la imagen
-            $imagen->delete(); // Elimina la imagen
-           
-
-        } else {
-            
+        $imagen = AccidenteImagen::find($id);
+        if ($imagen) {
+            $imagen->delete();
         }
-        
         return redirect()->action('App\Http\Controllers\TblaccidenteController@index');
+    }
+
+    public function destroy($id){
+        $imagen = AccidenteImagen::find($id);
+        if (! $imagen) {
+            return redirect()->back()->with('error', 'Archivo no encontrado.');
+        }
+        $accidenteId = $imagen->IdRegTab;
+        $imagen->delete();
+        return redirect()->route('accidentes.edit', $accidenteId)->with('success', 'Archivo eliminado.');
     }
 }

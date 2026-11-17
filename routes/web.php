@@ -65,6 +65,8 @@ Route::middleware([
 
     Route::post('/imagenesAccidente', [App\Http\Controllers\accidenteImagenController::class, 'store'])
         ->name('accidente.imagenStore');
+    Route::delete('/imagenesAccidente/{id}', [App\Http\Controllers\accidenteImagenController::class, 'destroy'])
+        ->name('accidente.imagenDelete');
 
     /* ---- MÓDULO IMÁGENES ---- */
     Route::prefix('imagenes')->name('imagenes.')->group(function () {

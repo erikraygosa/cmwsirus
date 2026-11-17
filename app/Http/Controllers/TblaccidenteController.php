@@ -345,10 +345,8 @@ class TblaccidenteController extends Controller
     public function edit($id)
     {
         $accidente = Tblaccidente::find($id);
-      
-
-      
-        return view('accidentes.edit', compact('id'));
+        $imagenes  = AccidenteImagen::where('IdRegTab', $id)->get();
+        return view('accidentes.edit', compact('id', 'accidente', 'imagenes'));
     }
 
     /**
@@ -490,43 +488,120 @@ class TblaccidenteController extends Controller
 
     public function actualizar(Request $request, $id, $tipo)
     {
-    //    dd($request);
         $accidente = DB::connection('mysql2')
-        ->table('tblaccidentes')
-        ->where('Folio', '=', $id)
-        ->where('Tipo', '=', $tipo)
-        ->first(); // Esto ejecuta la consulta y obtiene el primer registro encontrado
+            ->table('tblaccidentes')
+            ->where('Folio', '=', $id)
+            ->where('Tipo', '=', $tipo)
+            ->first();
 
-    // Verifica que se haya encontrado el registro
-    if ($accidente) {
-        // Realiza la actualización
+        if (! $accidente) {
+            return redirect()->back()->with('error', 'Registro no encontrado.');
+        }
+
+        // Datos generales
+        $responsable  = $request->input('dg_responsable') ? 'S' : 'N';
+        $presupuestar = $request->input('dg_presupuestar') ? 'S' : 'N';
+
+        // Datos de la unidad
+        $idUnidad = $request->input('du_unidad');
+        $unidadRow = $idUnidad ? \App\Models\Unidad::find($idUnidad) : null;
+        $idRuta = $request->input('du_ruta');
+        $rutaRow = $idRuta ? \App\Models\Ruta::find($idRuta) : null;
+        $idOper = $request->input('du_operador');
+        $operRow = $idOper ? \App\Models\Empleado::find($idOper) : null;
+
+        // Datos del tercero
+        $hasTercero = $request->input('dt_check') === 'on';
+
+        // Otros datos
+        $lesionados  = $request->input('ot_lesionadosCheck') === 'on' ? 'S' : 'N';
+        $aseguradora = $request->input('ot_datosAseguradoraCheck') === 'on' ? 'S' : 'N';
+        $ssp         = $request->input('ot_sspCheck') === 'on' ? 'S' : 'N';
+
+        $campos = [
+            // Generales
+            'Fecha'        => $request->input('dg_fecha'),
+            'Hora'         => $request->input('dg_hora'),
+            'Lugar'        => $request->input('dg_lugarAccidente'),
+            'Descripcion'  => $request->input('dg_descripcionAccidente'),
+            'CargoCostos'  => $request->input('dg_radioCargarCostos'),
+            'Responsable'  => $responsable,
+            'Presupuestar' => $presupuestar,
+            'IdCau'        => $request->input('ConcepCau') ?: null,
+            'ConcepCau'    => $request->input('ConcepCau')
+                ? optional(\App\Models\catcausalesacc::find($request->input('ConcepCau')))->Concepto
+                : $accidente->ConcepCau,
+            'FormaPagoTer' => $request->input('FormaPagoTer'),
+            'Sindicato'    => $request->input('Sindicato') ?: null,
+
+            // Unidad
+            'IdUnidad'    => $idUnidad ?: null,
+            'Unidad'      => $unidadRow ? $unidadRow->Unidad : $accidente->Unidad,
+            'Turno'       => $request->input('du_turno'),
+            'IdRuta'      => $idRuta ?: null,
+            'Ruta'        => $rutaRow ? $rutaRow->Ruta : $accidente->Ruta,
+            'IdOper'      => $idOper ?: null,
+            'Operador'    => $operRow ? $operRow->Nombre : $accidente->Operador,
+            'Licencia'    => $request->input('du_licencia'),
+            'Marca2'      => $request->input('du_marca'),
+            'Modelo2'     => $request->input('du_modelo'),
+            'Anio2'       => $request->input('du_año'),
+            'Color2'      => $request->input('du_color'),
+            'Placas2'     => $request->input('du_placas'),
+            'DaniosUnidad'=> $request->input('du_danos'),
+
+            // Tercero
+            'DatosTercero'  => $hasTercero ? 'S' : 'N',
+            'Propietario'   => $hasTercero ? $request->input('dt_propietario') : null,
+            'TelProp'       => $hasTercero ? $request->input('dt_telefonoPropietario') : null,
+            'Conductor'     => $hasTercero ? $request->input('dt_conductor') : null,
+            'TelConduc'     => $hasTercero ? $request->input('dt_telefonoConductor') : null,
+            'Marca1'        => $hasTercero ? $request->input('dt_marca') : null,
+            'Modelo1'       => $hasTercero ? $request->input('dt_modelo') : null,
+            'Anio1'         => $hasTercero ? $request->input('dt_año') : null,
+            'Color1'        => $hasTercero ? $request->input('dt_color') : null,
+            'Placas1'       => $hasTercero ? $request->input('dt_placas') : null,
+            'DaniosTercero' => $hasTercero ? $request->input('dt_daños') : null,
+            'CostoAproxTer' => $hasTercero ? $request->input('CostoAproxTer') : null,
+
+            // Otros
+            'Lesionados'    => $lesionados,
+            'NomLesionados' => $lesionados === 'S' ? $request->input('ot_lesionadosExtra') : null,
+            'Aseguradora'   => $aseguradora,
+            'Ajustador'     => $aseguradora === 'S' ? $request->input('ot_ajustador') : null,
+            'NumCQ'         => $aseguradora === 'S' ? $request->input('ot_numeroCq') : null,
+            'CostoAprox'    => $aseguradora === 'S' ? $request->input('ot_costoAproximado') : null,
+            'CostoReal'     => $request->input('ot_costoReal') ?: null,
+            'SSP'           => $ssp,
+            'Perito'        => $ssp === 'S' ? $request->input('ot_perito') : null,
+            'Gerente'       => $request->input('ot_gerente'),
+            'Observ'        => $request->input('ot_observaciones'),
+            'Comentarios'   => $request->input('ot_comentarios'),
+            'user_web'      => Auth::user()->name,
+        ];
+
         DB::connection('mysql2')
             ->table('tblaccidentes')
             ->where('Folio', '=', $id)
             ->where('Tipo', '=', $tipo)
-            ->update([
-                'Fecha' => $request->input('dg_fecha'),
-                // 'Hora' => $request->input('dg_hora'),
-                'Lugar' => $request->input('dg_lugarAccidente'),
-               
-                'Descripcion' => $request->input('dg_descripcionAccidente'),
-                // 'ot_lesionadosCheck' => $request->input('ot_lesionadosCheck'),
-                'NomLesionados' => $request->input('ot_lesionadosExtra'),
-                // 'ot_datosAseguradoraCheck' => $request->input('ot_datosAseguradoraCheck'),
-                'Ajustador' => $request->input('ot_ajustador'),
-                'NumCQ' => $request->input('ot_numeroCq'),
-                'CostoAprox' => $request->input('ot_costoAproximado'),
-            
-                'Perito' => $request->input('ot_perito'),
-                'Gerente' => $request->input('ot_gerente'),
-                'Observ' => $request->input('ot_observaciones'),
-            ]);
+            ->update($campos);
 
-            return redirect()->route('accidentes.index')->with('success', 'El accidente se ha Complementado correctamente.');
-    } else {
-        // Si no se encuentra el registro, manejar el caso
-        return redirect()->back()->with('error', 'Registro no encontrado.');
-    }
+        // Trazabilidad en tblexcepciones (tabla debe existir en bdcmcsirus)
+        try {
+            $user = Auth::user()->name;
+            $datos = 'Folio:'.$id.'|Tipo:'.$tipo.'|Editor:'.mb_substr($user, 0, 30);
+            DB::connection('mysql2')->table('tblexcepciones')->insert([
+                'Fecha'     => now()->format('Y-m-d H:i:s'),
+                'Usuario'   => mb_substr($user, 0, 30),
+                'Modulo'    => 'accidentes',
+                'Excepcion' => 'edicion',
+                'Datos'     => mb_substr($datos, 0, 255),
+            ]);
+        } catch (\Throwable $e) {
+            // La tabla no existe aún; la actualización ya fue guardada.
+        }
+
+        return redirect()->route('accidentes.index')->with('success', 'Accidente actualizado correctamente.');
     }
 
     public function getZonasPorRuta($idRuta)

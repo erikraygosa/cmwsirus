@@ -188,6 +188,12 @@ class FuelService
                 $this->invalid('Version', 'Los precios o las cargas cambiaron. Revise de nuevo y confirme el conjunto actual.');
             }
             $before = $state['price'] ? (array) $state['price'] : null;
+            if ($before !== null) {
+                $last = $db->table('tblcostos')->where('IdCosto', 2)->max('Fecha');
+                if ($last !== $input['Fecha']) {
+                    $this->invalid('Fecha', 'Sólo se puede editar el último precio.');
+                }
+            }
             $discount = $before !== null ? $before['PorcDto'] : ($state['previous'] !== null ? $state['previous']->PorcDto : '0');
             $after = ['IdCosto' => 2, 'Fecha' => $input['Fecha'], 'Costo' => Decimal::normalize($input['Costo']), 'PorcDto' => $discount === null ? null : Decimal::normalize((string) $discount, 4)];
             $entries = [['confirmation' => $input['Version'], ...$this->entry('tblcostos', ['IdCosto' => 2, 'Fecha' => $input['Fecha']], $before, $after, 'PRECIO')]];

@@ -16,7 +16,7 @@
 @can('combustible_exportar')<a class="btn btn-outline-success" href="{{ route('combustible.export',['format'=>'xlsx',...$filters]) }}">Excel</a> <a class="btn btn-outline-danger" href="{{ route('combustible.export',['format'=>'pdf',...$filters]) }}">PDF</a>@endcan
 </div>
 </form>
-<div class="alert alert-info">Totales de todas las cargas activas filtradas: <strong>{{ $totals['Litros'] }} litros · ${{ $totals['Importe'] }}</strong>. Las canceladas no se suman.</div>
+<div class="alert alert-info">Totales de las cargas activas filtradas: <strong>{{ number_format((float)$totals['Litros'], 2, '.', ',') }} litros</strong></div>
 <div class="card table-responsive"><table class="table table-striped"><thead><tr><th>Folio</th><th>Ticket</th><th>Carga</th><th>Trabajo</th><th>Turno</th><th>Unidad</th><th>Km</th><th>Litros</th><th>Precio (fecha)</th><th>Importe</th><th>Estatus</th><th>Acciones</th></tr></thead><tbody>
 @forelse($rows as $row)
 <tr class="{{ $row->Estatus==='C'?'table-secondary':'' }}"><td>{{ $row->IdCarga }}</td><td>{{ $row->NumeroTicket??'—' }}</td><td>{{ $row->FechaCarga }}</td><td>{{ $row->FechaTrabajo }}</td><td>{{ $row->Turno }}</td><td>{{ $row->Unidad }}</td><td>{{ $row->Km??'—' }}</td><td>{{ $row->Litros }}</td><td>{{ $row->PrecioLitro }} ({{ $row->FechaPrecio }})</td><td>{{ $row->Importe }}</td><td><strong>{{ $row->Estatus==='A'?'ACTIVA':'CANCELADA' }}</strong>@if($row->Estatus==='C')<p>{{ $row->MotivoCancelacion }}</p>@endif</td>
