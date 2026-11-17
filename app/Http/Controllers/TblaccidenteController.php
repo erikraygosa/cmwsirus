@@ -586,19 +586,22 @@ class TblaccidenteController extends Controller
             ->where('Tipo', '=', $tipo)
             ->update($campos);
 
-        // Trazabilidad en tblexcepciones (tabla debe existir en bdcmcsirus)
+        // Trazabilidad (tblexcep en bdcmcsirus, charset latin1)
         try {
-            $user = Auth::user()->name;
-            $datos = 'Folio:'.$id.'|Tipo:'.$tipo.'|Editor:'.mb_substr($user, 0, 30);
-            DB::connection('mysql2')->table('tblexcepciones')->insert([
+            $user  = Auth::user()->name;
+            $conv  = fn(string $s, int $max) => mb_substr(
+                iconv('ISO-8859-1', 'UTF-8', substr(iconv('UTF-8', 'ISO-8859-1//TRANSLIT', $s) ?: 'Usuario', 0, $max)), 0, $max
+            );
+            $datos = 'Folio:'.$id.'|Tipo:'.$tipo.'|Editor:'.mb_substr($user, 0, 20);
+            DB::connection('mysql2')->table('tblexcep')->insert([
                 'Fecha'     => now()->format('Y-m-d H:i:s'),
-                'Usuario'   => mb_substr($user, 0, 30),
+                'Usuario'   => $conv($user, 30),
                 'Modulo'    => 'accidentes',
                 'Excepcion' => 'edicion',
-                'Datos'     => mb_substr($datos, 0, 255),
+                'Datos'     => $conv(mb_substr($datos, 0, 255), 255),
             ]);
         } catch (\Throwable $e) {
-            // La tabla no existe aún; la actualización ya fue guardada.
+            // No bloquear el guardado si falla la auditoría.
         }
 
         return redirect()->route('accidentes.index')->with('success', 'Accidente actualizado correctamente.');
